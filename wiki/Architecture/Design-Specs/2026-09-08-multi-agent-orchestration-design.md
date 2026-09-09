@@ -863,3 +863,98 @@ Phase 0 lands rather than discovering it in CI.
 4. Do any Phase 3 concerns clear the project's lift rule (≥3pp lift, ≤15% token
    overhead) well enough to become default-on for children? Assume no until
    measured; the ablation warden owns that verdict, not this spec.
+
+## 13. Arguments against building this
+
+Recorded deliberately. A spec that only argues for itself is a sales document.
+These are the strongest reasons to **not** build most of what is above, in
+descending order of force.
+
+### 13.1 The spec's own field evidence contradicts its bulk
+
+The only real application input this spec has (FORGE, §9) said plainly that the
+biggest unlock **is not more primitives** — it is one end-to-end documented
+example of composing what already ships. §9 captures that ask. Phases 2 and 4
+are more primitives.
+
+If the field report is right, the highest-value deliverable in this document is
+the one section that contains no new code, and building Phases 2–4 first would
+be answering a question nobody asked.
+
+### 13.2 The project is 0 for 6 on its own lift rule
+
+`wiki/Architecture/Design-Specs/2026-07-28-ideal-architecture.md` records
+"Lift measurements in 2 months / cleared the bar: **6 / 0**", and the
+2026-08-11 decision doc repeats it: "6 of 6 recent lift measurements cleared
+0pp."
+
+Phase 3 proposes four new capabilities that each must clear the same bar
+(≥3pp lift, ≤15% token overhead) to become default-on. The base rate says most
+will not. Capability that is built, defaults off, and never clears the bar is
+precisely the dormant-surface pattern this spec criticizes in `identity` and
+`interaction` — reproduced deliberately rather than accidentally.
+
+### 13.3 The evidence points at consolidation, and consolidation is scheduled last
+
+Findings from the single session that produced this spec: five approval
+mechanisms (one dead), two dormant packages, a removed no-op `.withOrchestration()`,
+a dead `PolicyConfig.requireApprovalFor`, dead CSS for a script that does not
+exist, 21 stale README version banners, one phantom documented export.
+
+The diagnosis that best fits that evidence is **too much half-wired surface**,
+not missing capability. This spec's response is to add surface across eight
+phases and schedule consolidation (Phase 8) last. If the diagnosis is right,
+the ordering is inverted.
+
+Supporting figure: `builder.ts` is 2,893 lines with 80 `with*` methods today.
+`.claude/rules/behavior.md` says "Value simplicity and elegance… Resist
+unnecessary features, indirection, cleverness, and over-engineering."
+
+### 13.4 Phase 0 lends its credibility to Phases 6–7
+
+Phase 0 is an unambiguous bug fix: three live defects, a dead safety control,
+and a broken trace. Phases 6 and 7 (an MCP server, an identity system) are
+effectively new products with their own design surface.
+
+Bundling them in one document means approving the obviously-correct part
+creates momentum for the speculative part. That is a structural flaw in this
+spec, not in the work — the phases should be approved separately, and Phase 0
+should not be used as evidence that the rest is sound.
+
+### 13.5 The identity reversal rests on thinner evidence than it reads
+
+§6.5 reverses a considered DEFER verdict. It does so on the strength of a
+stated requirement ("communicate securely"), not observed demand. The one real
+application consulted explicitly does **not** need cross-process communication —
+single server process, everything in-process.
+
+So Phase 7's justification is an aspiration, not a user. The gate in §6.5
+(land with a consumer) is the right guard, but the honest read is that Phase 7
+has no demand behind it yet.
+
+### 13.6 Opportunity cost against the two higher-leverage gaps
+
+Ranked earlier in the same analysis that produced this spec: an MCP server
+(ecosystem adoption) and τ-bench (credibility — never run, so every comparison
+page makes architectural claims with no third-party number). Multi-agent
+orchestration ranked below both on leverage.
+
+This spec is large enough to consume the roadmap for a long stretch. If the
+goal is adoption rather than depth, a published benchmark number and protocol
+exposure likely beat orchestration sophistication.
+
+### 13.7 What survives the argument
+
+Not everything above is speculative. These stand on their own merits
+independent of the multi-agent thesis:
+
+- **Phase 0** — three live defects, a dead safety control, and disconnected
+  traces. Correct regardless of whether any further phase is built.
+- **Phase 1 (tags)** — small, and the single seam every later phase needs. Cheap
+  to build, cheap to leave unused.
+- **§9 (the documented example)** — what the only real user actually asked for.
+
+**Recommended scope, given all of the above:** build Phase 0, Phase 1, and §9.
+Stop there. Re-evaluate Phases 2–8 against observed demand after a real
+application has used the result — and treat Phase 8 (consolidation) as a
+candidate to promote ahead of Phases 2–4 rather than trail them.

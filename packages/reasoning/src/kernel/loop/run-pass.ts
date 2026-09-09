@@ -29,6 +29,7 @@
 import { Effect } from "effect";
 import { LLMService } from "@reactive-agents/llm-provider";
 import { runKernel } from "./runner.js";
+import { detectContinuationIntent } from "../capabilities/verify/quality-utils.js";
 import type {
   KernelInput,
   KernelRunOptions,
@@ -79,6 +80,18 @@ export function resolvePassOutput(state: KernelState): string | null {
   for (let i = state.steps.length - 1; i >= 0; i--) {
     const s = state.steps[i];
     if (s?.type === "thought" && typeof s.content === "string" && s.content.length > 0) {
+      // Never resurrect a continuation-intent thought ("I'll try again:") as
+      // the user-facing output. `state.output` reaching this fallback empty
+      // usually means runKernel's verifier gate already rejected the
+      // terminal content and nulled it (transitionState's failed-transition
+      // invariant); other rejection shapes (scaffold-leak, parrot) still
+      // need to surface here so the boundary verifier can re-derive and
+      // label the rejection reason on the receipt — only a continuation
+      // announcement is unconditionally unsafe to ship, since its entire
+      // meaning is "I am not done yet" (live QA finding 2026-09-09,
+      // mastra-vs-ra bench, frontier tier: RA shipped one as a false
+      // "answer" on a rejected run).
+      if (detectContinuationIntent(s.content).isContinuation) return null;
       return s.content;
     }
   }

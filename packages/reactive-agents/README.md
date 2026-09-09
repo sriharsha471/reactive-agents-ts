@@ -31,8 +31,6 @@ One install. Five reasoning strategies. Six LLM providers. A live local studio. 
 - **A2A protocol + multi-agent orchestration** — sequential, parallel, pipeline, map-reduce, dynamic sub-agents.
 - **`rax` CLI** — scaffold projects, generate agents, run tasks, launch the Cortex studio.
 
-> v0.10.2 — 4,672+ tests across 527 files. See [CHANGELOG.md](https://github.com/tylerjrbuell/reactive-agents-ts/blob/main/CHANGELOG.md) for the full Phase 1 mechanism validation report.
-
 ---
 
 ## Install
@@ -80,13 +78,13 @@ That's a fully observable, guardrailed, memory-backed reasoning agent in 12 line
 | You want the full builder API in one import | You're shipping a library and want zero unused code |
 | You're prototyping and don't want to track 17 versions | You only need one layer (e.g. just `@reactive-agents/a2a`) |
 | You want `rax` CLI bundled and ready to go | You're integrating into an existing app with strict deps |
-| You want a single `^0.10.2` upgrade path for everything | You need `@reactive-agents/channels` / `gateway` / `health` (not bundled here) |
+| You want a single lockstep upgrade path for everything | You need `@reactive-agents/channels` / `gateway` / `health` (not bundled here) |
 
 Every layer is still opt-in via `.with*()` calls — the umbrella just spares you 17 imports.
 
 ---
 
-## Feature highlights (v0.10.2)
+## Feature highlights
 
 ### Adaptive tool calling — local models that actually work
 

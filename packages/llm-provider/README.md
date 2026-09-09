@@ -1,6 +1,6 @@
 # @reactive-agents/llm-provider
 
-> Version: **0.10.3** — LLM provider adapters for [Reactive Agents](https://docs.reactiveagents.dev/).
+> LLM provider adapters for [Reactive Agents](https://docs.reactiveagents.dev/).
 
 A unified `LLMService` interface (`complete`, `stream`, `embed`, structured output) with adapters
 for **Anthropic**, **OpenAI**, **Google Gemini**, **Groq**, **xAI (Grok)**, **Ollama**, **LiteLLM**,
@@ -163,19 +163,22 @@ import {
   makeCircuitBreaker,
   makeRateLimiter,
   makeRateLimitedProvider,
-  FallbackChain,
 } from "@reactive-agents/llm-provider";
+```
 
-const fallback = new FallbackChain([primaryLayer, secondaryLayer], {
-  onFallback: (err, idx) => console.warn(`fell through to provider #${idx}:`, err),
-});
+Provider fallback is configured on the builder, not in this package:
+
+```typescript
+const agent = await ReactiveAgents.create()
+  .withProvider("anthropic")
+  .withFallbacks({ providers: ["openai", "ollama"] })
+  .build();
 ```
 
 ## Capability port
 
-`Capability` (per-(provider, model) descriptor) supersedes the deprecated `ProviderCapabilities`
-in v0.10.0; `ProviderCapabilities` remains exported for binary compatibility but is **scheduled
-for removal in v0.11.0**.
+`Capability` (per-(provider, model) descriptor) supersedes the deprecated `ProviderCapabilities`;
+`ProviderCapabilities` remains exported for binary compatibility. Use `Capability` in new code.
 
 ```typescript
 import { resolveCapability } from "@reactive-agents/llm-provider";

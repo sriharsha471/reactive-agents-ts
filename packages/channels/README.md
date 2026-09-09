@@ -1,6 +1,6 @@
 # @reactive-agents/channels
 
-> Version: **0.15.0** — external channel layer for [Reactive Agents](https://docs.reactiveagents.dev/).
+> External channel layer for [Reactive Agents](https://docs.reactiveagents.dev/).
 
 The channels package provides the **inbound messaging surface** for agents: bot transports
 (Discord, Telegram Bot API, Signal, …), HTTPS webhooks, a trigger registry that maps inbound

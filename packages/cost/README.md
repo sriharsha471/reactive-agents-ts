@@ -1,6 +1,6 @@
 # @reactive-agents/cost
 
-Cost management for the [Reactive Agents](https://docs.reactiveagents.dev/) framework. **v0.10.3**
+Cost management for the [Reactive Agents](https://docs.reactiveagents.dev/) framework.
 
 Routes tasks to the cheapest capable model using a 27-signal complexity router, caches semantically-similar requests, enforces budgets at four levels (per-request / per-session / daily / monthly), and tracks token + USD spend in real time. Pricing can be loaded from a static table or fetched dynamically (OpenRouter and provider APIs supported).
 

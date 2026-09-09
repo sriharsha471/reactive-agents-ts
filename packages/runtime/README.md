@@ -1,6 +1,6 @@
 # @reactive-agents/runtime
 
-> Version: **0.15.0** — execution runtime for [Reactive Agents](https://docs.reactiveagents.dev/).
+> Execution runtime for [Reactive Agents](https://docs.reactiveagents.dev/).
 
 The runtime package contains the 12-phase `ExecutionEngine`, the `ReactiveAgentBuilder` fluent API,
 `createRuntime()` for low-level Effect-TS layer composition, and the agent-level orchestration

@@ -22,11 +22,22 @@ cannot reach memory, reactive intelligence, model routing, durability,
 verification, or experience learning. Every subsystem the project pitches stops
 at the delegation boundary.
 
+Third, a sub-agent is not accountable: its OTel trace is a **disconnected root**,
+so the delegation structure is invisible in any backend, and an agent addressed
+across a process boundary is authenticated as a connection rather than as a
+principal.
+
 This spec unifies delegation onto one child-spawn boundary that inherits the
 existing `RunEnvelope`, makes delegation visible to the compose layer as tags,
-opens the rest of the framework to children on a per-concern basis, and then
-adds orchestration combinators in the shape the compose layer already uses. It
-deliberately does **not** introduce a new package, a new phase, or a new noun.
+opens the rest of the framework to children on a per-concern basis, restores
+trace lineage, and then adds orchestration combinators in the shape the compose
+layer already uses. It closes with protocol exposure (MCP) and identity at the
+process boundary. It deliberately does **not** introduce a new orchestration
+package, a new phase, or a new noun.
+
+The end state: a sub-agent is a full agent — same harness, same observability,
+same guarantees — addressable over standard protocols and accountable as a
+principal.
 
 The first phase is a bug fix that ships on its own and carries no design
 commitment.
@@ -148,17 +159,25 @@ Any new orchestration naming must not add a third meaning to "harness".
    per-concern basis with cheap defaults.
 4. Orchestration expressed as combinators, in the existing combinator shape.
 5. One public vocabulary for delegation.
+6. A sub-agent is fully traceable and inspectable — its lineage visible in the
+   trace, not only in the console.
+7. An agent is addressable over standard protocols, and a caller across a
+   process boundary is authenticated as a principal, not merely as a
+   connection.
 
 **Non-goals**
 
-- No new package. Shipping a package nothing resolves is the exact mistake
-  `identity` and `interaction` already made.
+- No new package **for orchestration**. Shipping a package nothing resolves is
+  the exact mistake `identity` and `interaction` already made. (Protocol
+  exposure in Phase 6 may warrant one — that decision is made there, against the
+  same consumer-at-landing test.)
 - **No 13th phase.** `Phase` is a public 12-value union, gate-checked, and "12-phase
   execution engine" appears in the site description, README, and comparison
   pages. Delegation happens *inside* `act`; tags are sufficient.
-- No identity revival. `@reactive-agents/identity` is DEFER-verdict with zero
-  consumers. Agent-to-agent authz earns its keep only once delegates cross
-  trust boundaries for real users.
+- No identity for in-process delegation. A parent that spawns a child in its own
+  fiber tree already has total authority over it; certificates there are
+  ceremony. Identity is scoped to the process boundary — see §6.5, which amends
+  this spec's original blanket deferral.
 - No breaking changes to existing builder methods.
 
 ## 4. Design
@@ -305,8 +324,10 @@ consolidation is mostly deletion:
 - `@reactive-agents/interaction` becomes the human-facing transport for
   `interactionResponse`, or is honestly marked experimental-and-unwired.
 
-Sequenced last because it is the only part that can change existing runtime
-behavior, and it is not required by anything before it.
+Sequenced late because it is the only part that can change existing runtime
+behavior, and it is not required by anything before it. Phase 7 (identity) may
+subsume part of it: once a caller is a principal, "who may approve" becomes an
+authorization question rather than a fourth approval mechanism.
 
 ## 5. Leveraging the framework a sub-agent currently cannot reach
 
@@ -405,7 +426,117 @@ fan-out is a performance and cost regression, not a fix.
 The default stays cheap. The capability becomes reachable, which today it is
 not at any price.
 
-## 6. Naming decisions
+## 6. Sub-agents as first-class principals
+
+A sub-agent that cannot be traced, inspected, or securely addressed is a
+half-baked agent regardless of how well it composes. §4 makes delegation
+composable and §5 makes it capable; this section makes it **accountable**.
+
+### 6.1 Traceability — the lineage exists and never reaches OTel
+
+The data is already there:
+
+- `packages/trace` models delegation as a first-class concept: `depth` and
+  `rootRunId` on correlation (`trace/src/events.ts:62-63`,
+  `trace/src/normalize.ts:41-74`).
+- The spawn path stamps `parentAgentId` and the child's `RunContext` onto the
+  child's task metadata (`sub-agent-executor.ts:574-580`), and children publish
+  on the parent's shared EventBus.
+
+But it stops at the OTel boundary. `observe/src/tracer.ts:63` starts every
+agent workflow span with **no parent context**:
+
+```ts
+case "AgentStarted": {
+  const span = tracer.startSpan(`agent:${event.agentId}`, { … });  // no ctx arg
+  spans.workflows.set(event.taskId, span);
+```
+
+Child LLM and tool spans correctly nest under their *own* agent's workflow span
+(the `ctx` third argument at `tracer.ts:103`, `:155`), but the child's workflow
+span itself is keyed by a fresh `taskId` and started from nothing. **Every
+sub-agent is therefore a separate OTel trace root**, disconnected from the
+parent run that spawned it.
+
+In practice: a five-child fan-out produces six unrelated traces in any OTLP
+backend, and the delegation structure — the single most important thing to see
+when debugging a multi-agent run — is the one thing the trace does not show.
+
+**Fix:** `AgentStarted` carries `parentAgentId`; look up the parent's workflow
+span and start the child's within its context. The lineage data needs no new
+plumbing — only to be used. This is small and high-value; it belongs in Phase 0
+alongside the other propagation fixes.
+
+### 6.2 Inspectability — what works, what is missing
+
+Working: child dashboard rollup into one parent print
+(`ChildDashboardRegistry`), run-scoped ledger merge with `sub-agent:<name>`
+provenance (`mergePassLedger`), depth- and name-aware log prefixes, and the
+live status renderer's collapsed sub-agent line.
+
+Missing: deterministic replay of a multi-agent run (§5.2 item 7), and child
+debrief synthesis into the parent's debrief (§5.2 item 6).
+
+### 6.3 Secure communication — transport is covered, identity is not
+
+**What exists.** A2A ingress is secure-by-default: `secureServe` binds loopback
+unless `RA_A2A_HOST` is set and **refuses a non-loopback bind without
+`RA_A2A_TOKEN`** (`a2a/src/server/http-server.ts:172-178`). Outbound, the
+client supports bearer and API-key auth. `withReceiptSigning({ privateKeyJwk })`
+already provides cryptographic run attestation.
+
+**What does not exist.** A shared bearer token authenticates a *connection*, not
+an *agent*. There is no per-caller principal, so an RA-hosted A2A server cannot:
+
+- distinguish which agent is calling
+- authorize per skill rather than per server
+- audit actions against a principal
+- represent a delegation chain (parent authorized child to act on its behalf)
+
+That list is precisely `packages/identity`, which already implements
+`CertificateAuth`, `PermissionManager`, `AuditLogger`, `IdentityService`, and a
+`Delegation` type — and is dormant with zero consumers.
+
+### 6.4 Protocol reach
+
+| Protocol | Consume | Expose |
+|---|---|---|
+| A2A | ✅ client, discovery, capability matching | ✅ JSON-RPC server + SSE |
+| MCP | ✅ `tools/src/mcp/mcp-client.ts` | ❌ **nothing** |
+
+`packages/tools/src/mcp/` contains exactly one file, the client. There is no
+`@modelcontextprotocol/sdk/server` import anywhere in the repo. An RA agent
+cannot be consumed as an MCP server, which is the standard way an agent is
+plugged into Claude Desktop, Cursor, and the rest of the ecosystem.
+
+This is the largest single adoption gap in the framework, and it is
+architecturally adjacent: exposing an agent over a protocol is the same
+capability-publication problem A2A already solves, with a different wire format.
+
+### 6.5 Revised position on identity (reversing §3)
+
+§3 lists identity revival as a non-goal, on the reasoning that agent-to-agent
+authz is "designing for a user that doesn't exist." **That reasoning does not
+survive the requirement that sub-agents communicate securely as first-class
+principals.** Under that requirement, identity is not speculative — it is the
+named gap in §6.3.
+
+The reversal is scoped, not total. Identity enters as **Phase 7**, last, and
+only after delegation is unified, capable, observable, and traceable. Two
+conditions gate it, so it does not repeat the mistake of shipping a package
+nothing resolves:
+
+1. It must have a consumer at the moment it lands — the A2A server's per-caller
+   authorization path, not a layer merged and left dormant.
+2. Local in-process delegation must not be forced to pay for it. A parent
+   spawning a child in its own fiber tree already has total authority over that
+   child; certificates there are ceremony. Identity applies at the **process
+   boundary** (A2A, MCP), where the caller is genuinely untrusted.
+
+§3's non-goal is amended accordingly: *identity is deferred until the protocol
+boundary needs it, and is scoped to that boundary.*
+
+## 7. Naming decisions
 
 One noun per layer; every word already exists in the codebase.
 
@@ -419,7 +550,7 @@ Rejected: `.withDelegates()` (invents a fourth noun); `.withOrchestration()`
 (the name of the removed no-op — reusing it would be actively misleading);
 anything adding a third meaning to "harness" (§2.6).
 
-## 7. Phasing
+## 8. Phasing
 
 Each phase ships independently and is independently valuable.
 
@@ -430,10 +561,13 @@ Each phase ships independently and is independently valuable.
 - Propagate `harnessPipeline`, `budgetLimits` (per §4.5 option 2), and the
   `RunEnvelope`.
 - Fix `.withAgentTool()` provider default to the parent's provider.
+- Parent the child's OTel workflow span under the parent's (§6.1) — the lineage
+  data already exists on `AgentStarted`.
 
 **Acceptance:** a `.compose()` killswitch registered on the parent fires inside
 a child on both paths; `.withAgentTool("x", {name:"x"})` runs on the parent's
-provider; a parent budget ceiling is not exceeded by the sum of its children.
+provider; a parent budget ceiling is not exceeded by the sum of its children; a
+delegating run emits **one** connected OTel trace, not one per agent.
 
 ### Phase 1 — delegation tags
 
@@ -483,16 +617,49 @@ economical once children can run cheaper models (3a).
 **Acceptance:** each combinator has a deterministic `test`-provider test;
 `fanOut` + `budgetLimit` compose without either being bypassed.
 
-### Phase 5 — durable delegation
+### Phase 5 — durable delegation + full inspectability
 
 Persist children; remove the forced `block` coercion so durable HITL works
-inside a child. Unlocks resume-mid-delegation.
+inside a child. Unlocks resume-mid-delegation. Lands the two §6.2 gaps
+alongside it, since both depend on children being persisted:
 
-**Acceptance:** a run killed mid-delegation resumes and completes the child.
+- child debrief synthesis into the parent's debrief
+- multi-agent replay (parent/child lineage in `packages/replay`)
 
-### Phase 6 — approval consolidation (optional, re-decide after Phase 4)
+**Acceptance:** a run killed mid-delegation resumes and completes the child; a
+multi-agent run replays deterministically with delegation structure intact.
 
-## 8. Test plan
+### Phase 6 — protocol exposure (MCP server)
+
+Expose an RA agent as an MCP server, mirroring what A2A already does for its
+own wire format (§6.4). The capability-publication problem is already solved by
+`generateAgentCard` / `toolsToSkills`; this is a second serialization of it.
+
+Largest single adoption gap in the framework — an RA agent becomes usable from
+Claude Desktop, Cursor, and any MCP client.
+
+**Acceptance:** an RA agent is reachable from a real MCP client; its skills
+enumerate; a tool call round-trips.
+
+### Phase 7 — identity at the process boundary
+
+Wire `packages/identity` into the A2A (and Phase 6 MCP) server's authorization
+path: per-caller principal, per-skill authorization, per-principal audit, and
+delegation chains (§6.3, §6.5).
+
+Two gates, both hard:
+
+1. It lands **with** its consumer — the server authorization path — never as a
+   dormant layer. If the consumer slips, this phase slips with it.
+2. In-process delegation does not pay for it.
+
+**Acceptance:** two RA agents on separate processes authenticate as distinct
+principals; an unauthorized skill call is refused and audited; a delegation
+chain is representable and verifiable.
+
+### Phase 8 — approval consolidation (optional, re-decide after Phase 4)
+
+## 9. Test plan
 
 Existing coverage: `packages/runtime/tests/subagent/` (8 files) covers the spawn
 path's cancellation, depth, observability, ledger merge, and dashboard rollup.
@@ -520,7 +687,7 @@ Gate impact: `check-cross-cutting.sh` may need a check extension, since the
 sub-agent boundary becomes a sanctioned envelope-derivation site. Confirm before
 Phase 0 lands rather than discovering it in CI.
 
-## 9. Risks
+## 10. Risks
 
 | Risk | Mitigation |
 |---|---|
@@ -531,8 +698,11 @@ Phase 0 lands rather than discovering it in CI.
 | Combinators tempt a general workflow engine | Non-goal. Six combinators, all expressible over the two tags. Anything needing more is a user-authored combinator |
 | Phase 3 concerns are individually cheap to enable and collectively expensive (a memory-and-RI-enabled fan-out of five is a very different cost profile) | Default-off per §5.3; the ablation rule applies — measure lift per concern before any of them becomes default-on |
 | Shared memory across children leaks one delegate's context into another | Decide the memory scope explicitly in 3c (per-run shared vs per-delegate namespaced); do not inherit the parent's store by accident |
+| Phase 7 repeats the identity mistake — a layer merged with nothing resolving it | The consumer-at-landing gate is hard, not advisory. If the A2A/MCP authorization path is not ready, Phase 7 does not land |
+| Phase 6 (MCP server) drifts into a general protocol-gateway project | Scope is one wire format over the existing capability-publication model. Reuse `generateAgentCard`/`toolsToSkills`; do not build a protocol abstraction layer for a second protocol |
+| Exposing an agent over MCP widens the attack surface before Phase 7 exists | Mirror A2A's secure-by-default ingress (loopback bind, token required for non-loopback) from day one — never ship an unauthenticated non-loopback listener |
 
-## 10. Open questions
+## 11. Open questions
 
 1. Should `harnessPipeline` and `budgetLimits` become formal `RunEnvelope`
    fields rather than parallel-threaded? They are run-wide cross-cutting

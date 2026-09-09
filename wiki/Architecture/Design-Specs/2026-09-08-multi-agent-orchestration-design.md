@@ -111,7 +111,7 @@ Consequences:
 delegation concept. A spawn is an opaque tool call inside `act`, so no
 combinator can observe, shape, or gate it.
 
-### 2.5 Four human-in-the-loop mechanisms
+### 2.5 Five human-in-the-loop mechanisms
 
 | # | Mechanism | Location | Direction | Durable | Reaches children |
 |---|---|---|---|---|---|
@@ -119,8 +119,24 @@ combinator can observe, shape, or gate it.
 | 2 | `requireApprovalFor` killswitch | `compose/killswitches/require-approval-for.ts` | human gates agent | no (sync callback) | no |
 | 3 | `InteractionManager.approvalGate` | `@reactive-agents/interaction` | human gates agent | via EventBus | no runtime wiring at all |
 | 4 | `.withUserInteraction()` | `builder.ts:1270`, kernel meta-tool | agent asks human | yes | not propagated |
+| 5 | `PolicyConfig.requireApprovalFor` | `gateway/src/types.ts:111` | human gates agent | **dead — no consumer** | n/a |
 
 #4 is the opposite direction and legitimately distinct. #1–3 are redundant.
+
+**#5 is a live defect, not merely redundancy.** `requireApprovalFor` is declared
+in the Gateway policy schema and consumed by nothing: zero occurrences of
+"approval" in `gateway/src/services/policy-engine.ts`,
+`gateway/src/services/gateway-service.ts`, or any of the five files in
+`gateway/src/policies/`. The only other references are `tests/types.test.ts`,
+which asserts the schema round-trips the value — a textbook case of unit-testing
+`f()` without pinning that `f()` is ever called.
+
+Impact: an application configures `requireApprovalFor: ["delete-record"]` on an
+autonomous gateway agent, reasonably believes destructive cron-triggered actions
+are gated, and they are not. This must be either wired or removed before the
+Gateway is recommended for autonomous use; a dead safety control is worse than
+an absent one.
+
 `RunEnvelopeRails` already reserves `approvalPolicy`, `approvalDecision`, and
 `interactionResponse` — the canonical slots exist and are underused.
 
@@ -148,6 +164,40 @@ Any new orchestration naming must not add a third meaning to "harness".
   parent's tree, `Fiber.await` returning an `Exit` so child failure never
   cascades, real cancellation on parent interrupt (`sub-agent-executor.ts:612`).
 - Depth capping, MCP tool proxying, dashboard rollup, and ledger merge all work.
+
+### 2.8 Autonomous approval has no defined semantics
+
+Surfaced by FORGE (an application on 0.16.0) and confirmed: the approval
+mechanisms are all specified against a live human in a chat turn. Nothing
+defines what happens when a **cron- or heartbeat-triggered** run hits a gated
+tool with no human present. Auto-deny, queue for the next human session, or hang
+until timeout are all defensible; the framework picks none of them explicitly,
+and `mode: "detach"` documentation assumes a human returns.
+
+This is the load-bearing question for the whole class of applications where
+"the agent acts autonomously" and "mutating actions need human approval" are
+both hard requirements — which is the normal shape for an agent with a schedule.
+It needs an explicit answer in the consolidation phase, and an emitted event
+("approval required, no synchronous approver available") so an application can
+route it to its own surface.
+### 2.9 Team memory is siloed by construction
+
+`defaultUserMemoryPath(agentId)` resolves to
+`$HOME/.reactive-agents/memory/<agentId>/memory.db`
+(`memory/src/types.ts:468`). Three specialist agents built as three
+`ReactiveAgents` instances therefore get **three separate databases** — three
+disconnected views of the same user.
+
+An explicit shared `dbPath` is the obvious workaround, but nothing documents
+whether that is supported: whether records are agent-scoped within the database
+(sharing vs collision), and whether concurrent SQLite/WAL access from several
+agents in one process is safe. The `relate`/`getRelated`/`search` graph added in
+0.16 is precisely the mechanism that should work across a team rather than
+within a single agent, which makes the gap more pointed rather than less.
+
+This is the memory-scope decision §5.3 defers to Phase 3c, arriving from a real
+application before the phase is written. It should be settled there as a
+supported, documented topology — not left as an undocumented workaround.
 
 ## 3. Goals and non-goals
 
@@ -563,6 +613,9 @@ Each phase ships independently and is independently valuable.
 - Fix `.withAgentTool()` provider default to the parent's provider.
 - Parent the child's OTel workflow span under the parent's (§6.1) — the lineage
   data already exists on `AgentStarted`.
+- Resolve `PolicyConfig.requireApprovalFor` (§2.5 #5): wire it to the durable
+  approval rail, or delete it. It ships today as a safety control that does
+  nothing, so it does not wait for the consolidation phase.
 
 **Acceptance:** a `.compose()` killswitch registered on the parent fires inside
 a child on both paths; `.withAgentTool("x", {name:"x"})` runs on the parent's
@@ -659,7 +712,35 @@ chain is representable and verifiable.
 
 ### Phase 8 — approval consolidation (optional, re-decide after Phase 4)
 
-## 9. Test plan
+## 9. The deliverable that is not code
+
+Field feedback from FORGE (a local-first application on 0.16.0, redesigning a
+single coach agent into a small specialist team) states the ask plainly: the
+biggest unlock is not more primitives, it is **one end-to-end documented example
+wiring `createAgentTool` + `.withGateway` + shared memory + approval-gating for
+one concrete application shape**, because each piece is documented in isolation
+and the application is left discovering whether they compose.
+
+That is a correct read of the gap, and it applies to this spec directly: §4–§6
+add composition, capability, and accountability, and none of it is reachable if
+the composed shape is never shown once. Every phase from 2 onward therefore
+carries a documentation obligation, and Phase 3 in particular must land the
+worked example for the common shape:
+
+> single process, small team of specialists under one orchestrator, autonomous
+> schedule, mutating actions gated by human approval, one shared user memory
+
+Deliberately not a swarm and not cross-process — that shape is the common one
+and it is currently the least documented.
+
+Two constraints this example must satisfy, both from §2:
+
+- it must state what happens when the schedule fires an approval-gated tool with
+  no human present (§2.8), rather than demonstrating only the live-human path
+- it must show the supported team-memory topology (§2.9), not an undocumented
+  shared-`dbPath` workaround
+
+## 10. Test plan
 
 Existing coverage: `packages/runtime/tests/subagent/` (8 files) covers the spawn
 path's cancellation, depth, observability, ledger merge, and dashboard rollup.
@@ -687,7 +768,7 @@ Gate impact: `check-cross-cutting.sh` may need a check extension, since the
 sub-agent boundary becomes a sanctioned envelope-derivation site. Confirm before
 Phase 0 lands rather than discovering it in CI.
 
-## 10. Risks
+## 11. Risks
 
 | Risk | Mitigation |
 |---|---|
@@ -702,7 +783,7 @@ Phase 0 lands rather than discovering it in CI.
 | Phase 6 (MCP server) drifts into a general protocol-gateway project | Scope is one wire format over the existing capability-publication model. Reuse `generateAgentCard`/`toolsToSkills`; do not build a protocol abstraction layer for a second protocol |
 | Exposing an agent over MCP widens the attack surface before Phase 7 exists | Mirror A2A's secure-by-default ingress (loopback bind, token required for non-loopback) from day one — never ship an unauthenticated non-loopback listener |
 
-## 11. Open questions
+## 12. Open questions
 
 1. Should `harnessPipeline` and `budgetLimits` become formal `RunEnvelope`
    fields rather than parallel-threaded? They are run-wide cross-cutting

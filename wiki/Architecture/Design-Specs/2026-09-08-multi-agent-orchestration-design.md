@@ -180,6 +180,7 @@ both hard requirements — which is the normal shape for an agent with a schedul
 It needs an explicit answer in the consolidation phase, and an emitted event
 ("approval required, no synchronous approver available") so an application can
 route it to its own surface.
+
 ### 2.9 Team memory is siloed by construction
 
 `defaultUserMemoryPath(agentId)` resolves to
@@ -649,7 +650,11 @@ Ordered within the phase by leverage, each independently shippable:
 - **3b — reactive intelligence in children.** `enableReactiveIntelligence` +
   options, opt-in. Stops unattended child loops.
 - **3c — memory + experience learning in children.** Shared memory layer as the
-  delegation channel; ExperienceStore records keyed by delegate.
+  delegation channel; ExperienceStore records keyed by delegate. Ships the
+  **team-memory topology decision** from §2.9: whether a team shares one store
+  or holds per-delegate stores, whether records are agent-scoped within a shared
+  database, and whether concurrent WAL access from several in-process agents is
+  supported. The answer is documented, not left as a working workaround.
 - **3d — verification + debrief rollup.** Child answers verified before the
   parent consumes them; child debriefs synthesized into the parent's.
 
@@ -710,7 +715,26 @@ Two gates, both hard:
 principals; an unauthorized skill call is refused and audited; a delegation
 chain is representable and verifiable.
 
-### Phase 8 — approval consolidation (optional, re-decide after Phase 4)
+### Phase 8 — approval consolidation
+
+Collapse mechanisms #1–3 onto the envelope rails per §4.6, and settle the
+autonomous-approval semantics §2.8 leaves undefined:
+
+- an explicit, documented answer for a scheduled run reaching a gated tool with
+  no synchronous approver — auto-deny, queue for the next human session, or
+  timeout — chosen rather than left emergent
+- an emitted event ("approval required, no synchronous approver available") so
+  an application can route the decision to its own surface
+- one worked example of the autonomous path, not only the live-human path
+
+Re-decide scope after Phase 4; Phase 7 may subsume part of it, since once a
+caller is a principal, "who may approve" becomes an authorization question.
+Note that the *dead* Gateway control (§2.5 #5) is fixed far earlier, in Phase 0
+— it does not wait for this phase.
+
+**Acceptance:** a scheduled run hitting a gated tool with no approver present
+behaves per the documented rule and emits the event; the behavior is covered by
+a deterministic test, not by prose alone.
 
 ## 9. The deliverable that is not code
 

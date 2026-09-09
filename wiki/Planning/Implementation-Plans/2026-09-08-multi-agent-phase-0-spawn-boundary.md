@@ -54,7 +54,7 @@
 - Consumes: `buildLightRuntimeConfig` from `../../runtime.js` (existing, exported).
 - Produces:
   - `interface InheritedRunContext` — the field bag a child inherits.
-  - `const toChildRuntimeOptions: (inherited: InheritedRunContext, child: ChildIdentity) => LightRuntimeOptionsSubset` — merges inherited fields with the child's own identity, applying the undefined-spread rule.
+  - `const toChildRuntimeOptions: (inherited: InheritedRunContext, child: ChildIdentity) => LightRuntimeOptions` — merges inherited fields with the child's own identity, applying the undefined-spread rule. `LightRuntimeOptions` is imported type-only from `../../runtime-types.js`, which itself imports only types, so there is no import cycle and **no cast is needed at any call site**.
   - `interface ChildIdentity { agentId: string; agentDisplayName: string; systemPrompt: string; maxIterations?: number; allowedTools?: readonly string[]; requiredTools?: { tools: string[]; adaptive: boolean; maxRetries: number } }`
 
 - [ ] **Step 1: Write the failing test**
@@ -151,6 +151,7 @@ import type { FabricationGuardMode } from "@reactive-agents/reasoning";
 import type { ContextProfile } from "@reactive-agents/reasoning";
 import type { TestTurn } from "@reactive-agents/llm-provider";
 import type { BudgetLimits } from "../../builder.js";
+import type { LightRuntimeOptions } from "../../runtime-types.js";
 import type {
   ApprovalPolicyConfig,
   GroundingOptions,
@@ -201,7 +202,7 @@ export interface ChildIdentity {
 export const toChildRuntimeOptions = (
   inherited: InheritedRunContext,
   child: ChildIdentity,
-): Record<string, unknown> => ({
+): LightRuntimeOptions => ({
   agentId: child.agentId,
   agentDisplayName: child.agentDisplayName,
   systemPrompt: child.systemPrompt,
@@ -327,7 +328,7 @@ Replace the whole `const subRuntime = createLightRuntime({ ... })` call (current
           maxIterations: defaultMaxIter,
           ...(subAllowed !== undefined ? { allowedTools: subAllowed } : {}),
           ...(subRequiredTools !== undefined ? { requiredTools: subRequiredTools } : {}),
-        }) as Parameters<typeof createLightRuntime>[0],
+        }),
       );
 ```
 
@@ -358,7 +359,7 @@ and pass `observabilityOptions: childObservabilityOptions` plus the two shared h
         observabilityOptions: childObservabilityOptions,
         ...(sharedEventBus !== undefined ? { sharedEventBus } : {}),
         ...(sharedChildDashboardRegistry !== undefined ? { sharedChildDashboardRegistry } : {}),
-      } as Parameters<typeof createLightRuntime>[0]);
+      });
 ```
 
 - [ ] **Step 5: Update the destructuring block**
@@ -522,7 +523,7 @@ Then replace the `const subRuntime = createLightRuntime({ ... })` call (lines 16
             },
           ),
           ...(sharedEventBus !== undefined ? { sharedEventBus } : {}),
-        } as Parameters<typeof createLightRuntime>[0]);
+        });
 ```
 
 - [ ] **Step 4: Pass `inherited` at the call site**
@@ -713,7 +714,22 @@ Expected: PASS
 Run: `bun test packages/runtime --timeout 30000`
 Expected: PASS. A child now inheriting killswitches is a behavior change — if a pre-existing test fails because a child is now constrained where it previously was not, that test was encoding the bug. Update it and note the change in the commit body.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: Record the containment gap as a `.todo` test**
+
+Append to `packages/runtime/tests/subagent/pipeline-propagation.test.ts`:
+
+```typescript
+describe("budget containment across siblings", () => {
+  // Phase 5b. A child now inherits the parent's CEILING, so it is bounded where
+  // it previously was not — but N siblings can each spend up to that ceiling.
+  // Real containment needs a run-scoped ledger plus an arbitration-path change
+  // (arbitrator.ts reads this kernel's own state.tokens/state.cost), which is
+  // kernel surgery and deliberately out of Phase 0's scope.
+  it.todo("N children cannot collectively exceed the parent's budget ceiling");
+});
+```
+
+- [ ] **Step 8: Commit**
 
 ```bash
 bun run typecheck
@@ -724,9 +740,10 @@ Compose combinators and all five killswitches were parent-only, silently,
 and a .withBudget() ceiling was escaped by delegating: the child kernel
 saw state.meta.budgetLimits === undefined and enforced nothing.
 
-Note: budget is inherited as the parent's ceiling, so N children may each
-spend up to it. Run-scoped remaining-budget accounting is tracked
-separately in the spec (section 4.5) and is not closed by this commit."
+Note: budget is inherited as the parent's ceiling, so a child is bounded
+where it previously was not, but N children may each spend up to it.
+Sum-containment needs a run-scoped ledger and an arbitration-path change;
+it is Phase 5b in the spec and is marked here by a .todo test."
 ```
 
 ---
@@ -1068,12 +1085,13 @@ git commit -m "docs: document the sub-agent inheritance rule; add Phase 0 change
 | Parent the child's OTel span (§6.1) | 5 |
 | Resolve `PolicyConfig.requireApprovalFor` (§2.5 #5) | 6 |
 | A parent killswitch fires inside a child, both paths | 4 (spawn), 3 (agent-tool live dispatch) |
+| A child is subject to a budget ceiling (NOT sum-containment) | 4 |
 | One connected OTel trace per delegating run | 5 |
 
-**Deviation from the spec, stated explicitly:** the spec's §4.5 recommends option 2 (inherit the parent's *live remaining* budget) over option 1 (inherit the ceiling as-is). This plan implements **option 1**, because run-scoped remaining-budget accounting needs a shared counter that does not exist yet and would expand Phase 0 well past a bug fix. The spec's own risk row anticipates this: "if it proves invasive, ship option 1 + a failing test documenting the gap rather than silently accepting it." Task 4's commit message records the gap. **Before closing Phase 0, add the documenting test** — a skipped or `.todo` test named for the N-children-exceed-parent-ceiling case — so the gap is visible in the suite rather than only in prose.
+**Budget scope (matches spec §4.5 as revised):** this plan implements option 1 — a child inherits the parent's ceiling. That is a strict improvement over today, where a child has *no* ceiling at all, and it is pure plumbing. It is explicitly **not** sum-containment: N children can each spend up to the parent's ceiling. True containment needs a run-scoped ledger plus a change to what the arbitration path reads (`arbitrator.ts:1855-1860` reads the kernel's own `state.tokens`/`state.cost`), which is kernel surgery and is Phase 5b in the spec. Task 4 Step 7 records the gap as a `.todo` test so it is visible in the suite, not only in prose.
 
 **Placeholder scan:** no TBD/TODO; every code step carries real code; no "similar to Task N" references.
 
 **Type consistency:** `InheritedRunContext` and `ChildIdentity` are defined once in Task 1 and referenced by exact name in Tasks 2, 3, and 4. `toChildRuntimeOptions` keeps one signature throughout. `compileHarnessPipeline` is defined in Task 4 Step 3 and used in Step 4.
 
-**Known risk carried into execution:** Task 2 Step 4 and Task 3 Step 3 both use `as Parameters<typeof createLightRuntime>[0]`. That cast is a real weakening of type safety and conflicts with the project's no-`any`-spirit rule. Prefer typing `toChildRuntimeOptions`'s return as the actual options type if it can be imported without a cycle; only fall back to the cast if the import cycles. Flag it in review either way.
+**Type safety:** no casts anywhere. `toChildRuntimeOptions` returns `LightRuntimeOptions` directly, imported type-only from `../../runtime-types.js` (verified: that module imports only types, so there is no cycle). If the compiler rejects the returned literal, the field names are wrong — fix the field names, do not add a cast to silence it.

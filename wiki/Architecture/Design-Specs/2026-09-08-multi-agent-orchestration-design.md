@@ -359,10 +359,34 @@ ceiling, so N children can spend N× the parent's budget while each individually
    to read a shared run-scoped counter.
 3. **Inherit as-is, plus opt-in `budgetPerSubAgent`** — closes nothing by default.
 
-**Recommendation: option 2.** The run, not the agent, is the unit a budget
-should bound, and `RunContext` already threads run-scoped identity to every
-descendant. Option 1 ships a fix that does not fix. This is the one place the
-spec chooses correctness over the smallest diff.
+**Recommendation: option 2** as the end state — the run, not the agent, is the
+unit a budget should bound. But option 2 is **not deliverable in Phase 0**, and
+the earlier draft of this section was wrong to imply it was. Verified why:
+
+- Enforcement is per-kernel. `arbitrator.ts:1855-1860` computes the budget
+  signal from `state.tokens` / `state.cost` — that kernel's own counters — against
+  `state.meta.budgetLimits`. A child kernel starts both counters at zero.
+- The spawn boundary cannot see the parent's spend. `buildSubAgentTask` resolves
+  only a `RunContext` (`taskId`, `agentId`, `depth`) off `CurrentRunContextRef`.
+  Token and cost totals are not on it.
+
+So option 2 needs two changes together: a run-scoped ledger threaded to every
+descendant (the mechanism already exists — `sharedEventBus` and
+`sharedChildDashboardRegistry` are threaded exactly this way), **and** a change
+to what the arbitration path reads, which is hot-path kernel surgery.
+
+**Therefore, staged:**
+
+- **Phase 0 ships option 1.** Today a child has *no ceiling at all*; inheriting
+  the parent's is a strict improvement over unbounded, and it is pure plumbing.
+- **True containment is its own phase**, because it is a kernel change, not
+  plumbing, and it should be designed and ablated on its own.
+
+Phase 0's acceptance criterion is scoped to what option 1 actually delivers: a
+child is subject to a ceiling. It must **not** claim the sum of children cannot
+exceed the parent — option 1 does not provide that, and an acceptance criterion
+that overstates the deliverable is how a known gap becomes an assumed guarantee.
+The gap is recorded as a `.todo` test so it is visible in the suite.
 
 ### 4.6 Approval consolidation (deferred, sequenced last)
 
@@ -620,7 +644,8 @@ Each phase ships independently and is independently valuable.
 
 **Acceptance:** a `.compose()` killswitch registered on the parent fires inside
 a child on both paths; `.withAgentTool("x", {name:"x"})` runs on the parent's
-provider; a parent budget ceiling is not exceeded by the sum of its children; a
+provider; a child is subject to a budget ceiling where it previously had none
+(§4.5 option 1 — explicitly NOT sum-containment, which is its own phase); a
 delegating run emits **one** connected OTel trace, not one per agent.
 
 ### Phase 1 — delegation tags
@@ -686,6 +711,19 @@ alongside it, since both depend on children being persisted:
 
 **Acceptance:** a run killed mid-delegation resumes and completes the child; a
 multi-agent run replays deterministically with delegation structure intact.
+
+### Phase 5b — run-scoped budget containment
+
+Make the run, not the agent, the unit a budget bounds (§4.5 option 2). Two
+coordinated changes: thread a run-scoped spend ledger to every descendant the
+way `sharedEventBus` already is, and have the arbitration path read the run
+total rather than the kernel's own counters.
+
+Separated from Phase 0 because it is kernel surgery on the hot arbitration
+path, not plumbing, and it deserves its own ablation.
+
+**Acceptance:** N children of one parent cannot collectively exceed the
+parent's ceiling — the `.todo` test left by Phase 0 is enabled and passes.
 
 ### Phase 6 — protocol exposure (MCP server)
 

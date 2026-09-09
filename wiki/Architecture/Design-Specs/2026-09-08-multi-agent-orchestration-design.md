@@ -17,11 +17,16 @@ Reactive Agents already has a capable delegation engine and a capable
 composition layer. They cannot see each other, and the delegation engine itself
 is split into two execution paths with divergent inheritance semantics.
 
+Separately and more consequentially, a sub-agent runs a **stripped harness**: it
+cannot reach memory, reactive intelligence, model routing, durability,
+verification, or experience learning. Every subsystem the project pitches stops
+at the delegation boundary.
+
 This spec unifies delegation onto one child-spawn boundary that inherits the
 existing `RunEnvelope`, makes delegation visible to the compose layer as tags,
-and then adds orchestration combinators in the shape the compose layer already
-uses. It deliberately does **not** introduce a new package, a new phase, or a
-new noun.
+opens the rest of the framework to children on a per-concern basis, and then
+adds orchestration combinators in the shape the compose layer already uses. It
+deliberately does **not** introduce a new package, a new phase, or a new noun.
 
 The first phase is a bug fix that ships on its own and carries no design
 commitment.
@@ -139,8 +144,10 @@ Any new orchestration naming must not add a third meaning to "harness".
 
 1. One child-spawn boundary with one inheritance rule.
 2. Delegation observable and steerable from the compose layer.
-3. Orchestration expressed as combinators, in the existing combinator shape.
-4. One public vocabulary for delegation.
+3. A sub-agent can reach every framework subsystem its parent can, on a
+   per-concern basis with cheap defaults.
+4. Orchestration expressed as combinators, in the existing combinator shape.
+5. One public vocabulary for delegation.
 
 **Non-goals**
 
@@ -301,7 +308,104 @@ consolidation is mostly deletion:
 Sequenced last because it is the only part that can change existing runtime
 behavior, and it is not required by anything before it.
 
-## 5. Naming decisions
+## 5. Leveraging the framework a sub-agent currently cannot reach
+
+### 5.1 Sub-agents run a stripped harness
+
+`buildLightRuntimeConfig` (`runtime.ts:330-420`) accepts the full agent surface.
+Neither delegation path passes any of:
+
+| Not inherited | Consequence for a sub-agent |
+|---|---|
+| `enableMemory` | No memory bootstrap, no semantic recall, no episodic record. A child starts blank every time and its work is never remembered. |
+| `enableExperienceLearning` | The ExperienceStore is documented as **cross-agent** learning. Sub-agents neither contribute to nor read from it — the one place "cross-agent" should mean something. |
+| `enableReactiveIntelligence` + options | No entropy sensing inside a child: no early stop, no context compression, no strategy switch, no bandit learning. A looping child burns its full iteration budget. |
+| `modelRouting` | Every child runs the parent's model. No cheap-model routing for simple delegates. |
+| `durableRuns` | No durable store. This is why `approvalPolicy` must be coerced to `block` in children (`sub-agent-executor.ts:477-483`) — detach would strand the child. A crash mid-delegation loses all child work. |
+| `adaptiveHarness`, `horizonProfile`, `calibration` | No adaptive mechanism control or per-model threshold calibration. |
+| `strategySwitching`, `retryPolicy`, `minIterations` | A child cannot switch strategy or retry under policy. |
+| `verificationStep`, `outputValidator`, `customTermination` | A child's answer is never verified or schema-validated before it returns to the parent. |
+| `thinking` / `thinkingOptions` | Extended thinking never reaches a child. |
+| `session` | A child has no session continuity across delegations. |
+
+Guardrails, observability, cost tracking, and `contextProfile` *are* inherited by
+the spawn path (and none of them by the `.withAgentTool()` path — §2.1).
+
+The framing that matters: **sub-agents are second-class citizens of the
+framework.** Every subsystem the project pitches — memory, reactive
+intelligence, local-to-frontier portability, durability, verification — stops at
+the delegation boundary. Fixing composition (§4) without fixing this ships a
+better way to orchestrate agents that still cannot use the framework.
+
+### 5.2 What "full advantage" unlocks
+
+Ranked by leverage, each grounded in a system that already exists:
+
+1. **Per-delegate model routing.** A `summarize` delegate on a local 4B model
+   while the parent runs frontier. Local-to-frontier portability is the
+   project's central claim, and multi-agent is where it pays the most — a
+   fan-out of five cheap children against one expensive parent is the canonical
+   cost win. `modelRouting` already exists; it just never reaches a child.
+
+2. **Reactive Intelligence inside children.** The entropy controller's whole
+   purpose is stopping a wasteful loop early. A sub-agent is exactly where an
+   unattended loop is least visible and most expensive. `route()` in §4.4 also
+   becomes learnable rather than hand-written: the Thompson-sampling bandit
+   already learns per `(model, taskCategory)`, and "which delegate wins this
+   task category" is the same shape.
+
+3. **Memory as the delegation channel.** Parent-to-child context is currently a
+   prompt string (`composeSubAgentDirectivePrompt`) — re-serialized every
+   spawn. With a shared memory layer a child recalls instead of being
+   re-prompted, cutting tokens on exactly the hot path, and its findings persist
+   for later delegations instead of dying with the fiber.
+
+4. **ExperienceStore across delegates.** The store already models
+   `(taskType, toolPattern) → success rate`. "For research tasks, delegate to
+   `researcher` — 88% over 12 runs" is the same record with the delegate as the
+   pattern. This is cross-agent learning finally meaning cross-*agent*.
+
+5. **Durable delegation.** Persisting children unlocks resume-mid-delegation and
+   removes the forced `block` coercion, so durable HITL works inside a child
+   rather than being downgraded by necessity.
+
+6. **Verification and debrief rollup.** A child's answer should be verifiable
+   before the parent consumes it, and child debriefs should synthesize into the
+   parent's. Both subsystems exist and neither crosses the boundary.
+
+7. **Multi-agent replay.** `packages/replay` has no parent/child concept, so a
+   multi-agent run cannot be deterministically replayed — the debugging story
+   is weakest exactly where runs are hardest to reason about.
+
+### 5.3 Design implication — inheritance must be per-concern, not all-or-nothing
+
+§4.1 states children inherit run-wide concerns. §5.1 shows why that rule needs a
+second axis: some of these are *expensive* (memory opens a database, durable
+runs write rows, RI adds per-step scoring). Forcing them on every child of every
+fan-out is a performance and cost regression, not a fix.
+
+`InheritedRunContext` therefore classifies each concern:
+
+- **Always inherited** — safety and judgment: envelope policy + rails,
+  `harnessPipeline`, `budgetLimits`, guardrails, `contextProfile`. A child must
+  never escape a constraint its parent accepted. This is Phase 0.
+- **Inherited by default, per-delegate override** — provider/model,
+  observability, cost tracking, `thinking`, `retryPolicy`.
+- **Opt-in, off by default** — memory, experience learning, reactive
+  intelligence, durable runs, session. Enabled per delegate, or for all children
+  via one switch:
+
+  ```ts
+  .withSubAgents(
+    { researcher: { role: "..." }, summarizer: { model: "llama3.2:3b" } },
+    { inherit: { memory: true, reactiveIntelligence: true } },
+  )
+  ```
+
+The default stays cheap. The capability becomes reachable, which today it is
+not at any price.
+
+## 6. Naming decisions
 
 One noun per layer; every word already exists in the codebase.
 
@@ -315,7 +419,7 @@ Rejected: `.withDelegates()` (invents a fourth noun); `.withOrchestration()`
 (the name of the removed no-op — reusing it would be actively misleading);
 anything adding a third meaning to "harness" (§2.6).
 
-## 6. Phasing
+## 7. Phasing
 
 Each phase ships independently and is independently valuable.
 
@@ -339,24 +443,56 @@ Add the two tags, `TagMap` entries, `ALL_TAGS` entries, emission from
 **Acceptance:** a transform on `delegation.requested` can suppress a spawn and
 reshape a child's task; a tap observes both tags at correct depth.
 
-### Phase 2 — `.withSubAgents()`
+### Phase 2 — `.withSubAgents()` + the `inherit` surface
 
-Bulk constructor, existing methods untouched.
+Bulk constructor, existing methods untouched. Carries the per-concern
+`inherit` option from §5.3 — the switch every later phase needs.
 
 **Acceptance:** every existing sub-agent test passes unmodified; the new form
-produces byte-identical `_agentTools` entries.
+produces byte-identical `_agentTools` entries; `inherit` toggles are honored
+per delegate.
 
-### Phase 3 — orchestration combinators
+### Phase 3 — reach the framework from a child (§5)
+
+Ordered within the phase by leverage, each independently shippable:
+
+- **3a — per-delegate model routing.** `modelRouting` + per-delegate `model`.
+  The cost win, and the one that makes local-to-frontier portability real in
+  multi-agent. Ship first.
+- **3b — reactive intelligence in children.** `enableReactiveIntelligence` +
+  options, opt-in. Stops unattended child loops.
+- **3c — memory + experience learning in children.** Shared memory layer as the
+  delegation channel; ExperienceStore records keyed by delegate.
+- **3d — verification + debrief rollup.** Child answers verified before the
+  parent consumes them; child debriefs synthesized into the parent's.
+
+**Acceptance per sub-phase:** the concern demonstrably takes effect inside a
+child (asserted on child config *and* on observed behavior — see
+`feedback_wire_it_and_pin_it`: a consumer must read it and behavior must
+change); default-off concerns stay off unless opted in.
+
+### Phase 4 — orchestration combinators
 
 `route`, `fanOut`, `firstSuccess`, `quorum`, `budgetPerSubAgent`,
 `capDelegationDepth`, plus registry entry alongside `killswitches`.
 
+Sequenced after Phase 3 because `route()` is substantially more valuable once
+the bandit can learn delegate selection (§5.2 item 2), and `fanOut` is only
+economical once children can run cheaper models (3a).
+
 **Acceptance:** each combinator has a deterministic `test`-provider test;
 `fanOut` + `budgetLimit` compose without either being bypassed.
 
-### Phase 4 — approval consolidation (optional, re-decide after Phase 3)
+### Phase 5 — durable delegation
 
-## 7. Test plan
+Persist children; remove the forced `block` coercion so durable HITL works
+inside a child. Unlocks resume-mid-delegation.
+
+**Acceptance:** a run killed mid-delegation resumes and completes the child.
+
+### Phase 6 — approval consolidation (optional, re-decide after Phase 4)
+
+## 8. Test plan
 
 Existing coverage: `packages/runtime/tests/subagent/` (8 files) covers the spawn
 path's cancellation, depth, observability, ledger merge, and dashboard rollup.
@@ -384,7 +520,7 @@ Gate impact: `check-cross-cutting.sh` may need a check extension, since the
 sub-agent boundary becomes a sanctioned envelope-derivation site. Confirm before
 Phase 0 lands rather than discovering it in CI.
 
-## 8. Risks
+## 9. Risks
 
 | Risk | Mitigation |
 |---|---|
@@ -393,8 +529,10 @@ Phase 0 lands rather than discovering it in CI.
 | Budget option 2 needs a shared run-scoped counter | Scope it in Phase 0; if it proves invasive, ship option 1 + a failing test documenting the gap rather than silently accepting it |
 | `check-cross-cutting.sh` rejects the new derivation site | Read the gate before writing the code |
 | Combinators tempt a general workflow engine | Non-goal. Six combinators, all expressible over the two tags. Anything needing more is a user-authored combinator |
+| Phase 3 concerns are individually cheap to enable and collectively expensive (a memory-and-RI-enabled fan-out of five is a very different cost profile) | Default-off per §5.3; the ablation rule applies — measure lift per concern before any of them becomes default-on |
+| Shared memory across children leaks one delegate's context into another | Decide the memory scope explicitly in 3c (per-run shared vs per-delegate namespaced); do not inherit the parent's store by accident |
 
-## 9. Open questions
+## 10. Open questions
 
 1. Should `harnessPipeline` and `budgetLimits` become formal `RunEnvelope`
    fields rather than parallel-threaded? They are run-wide cross-cutting
@@ -404,3 +542,11 @@ Phase 0 lands rather than discovering it in CI.
    different process with its own harness; inheritance likely stops at the
    task payload. Phase 0 should make this boundary explicit rather than
    accidental.
+3. Should `packages/replay` gain a parent/child concept (§5.2 item 7)? A
+   multi-agent run is currently not deterministically replayable, which is the
+   weakest debugging story exactly where runs are hardest to reason about. Not
+   scoped here — it is its own design question, and it should be raised again
+   once Phase 4 makes multi-agent runs common enough to need it.
+4. Do any Phase 3 concerns clear the project's lift rule (≥3pp lift, ≤15% token
+   overhead) well enough to become default-on for children? Assume no until
+   measured; the ablation warden owns that verdict, not this spec.

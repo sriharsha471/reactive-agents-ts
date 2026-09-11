@@ -196,7 +196,14 @@ const PACKAGES_ROOT = join(REPO_ROOT, "packages");
 //   Design-out would mean widening AgentMemory's public port type in
 //   @reactive-agents/core to match, a cross-package type change outside
 //   this fix's scope. Bumping per this file's own precedent (2026-08-20).
-const CEILING = 77;
+// - 2026-09-10: +1 for reasoning/src/kernel/loop/exhaustion-continuation-leak.test.ts:54
+//   (`} as unknown as KernelInput`). New regression test for HS-237
+//   (resolvePassOutput no longer resurrects rejected continuation-intent
+//   thoughts, commit 8af3a7aa). Canonical test-double boundary — the test
+//   builds a partial KernelInput fixture and owns the absorbing side. Same
+//   category as the existing partial-ToolService and global-fetch stub
+//   bumps above.
+const CEILING = 78;
 
 interface Hit {
   file: string;

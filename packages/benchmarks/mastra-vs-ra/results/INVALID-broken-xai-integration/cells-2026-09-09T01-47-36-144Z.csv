@@ -1,0 +1,9 @@
+tier,framework,model,task,category,runIndex,success,reason,outputLen,tokens,inputTokens,outputTokens,costUsd,durationMs,error
+grok,mastra,grok-3-mini,k1-france-capital,knowledge,0,1,"matched ''paris''",5,326,225,101,0.000118,1489,
+grok,mastra,grok-3-mini,k1-france-capital,knowledge,1,1,"matched ''paris''",5,304,225,79,0.000107,1003,
+grok,mastra,grok-3-mini,t1-calculator-add,tool-required,0,1,"matched ''391''",3,980,735,245,0.000343,2920,
+grok,mastra,grok-3-mini,t1-calculator-add,tool-required,1,1,"matched ''391''",3,922,737,185,0.000314,2059,
+grok,mastra,grok-3-mini,t3-kv-fetch,tool-required,0,1,"matched ''https://api.example.com/v2''",26,933,728,205,0.000321,2410,
+grok,mastra,grok-3-mini,t3-kv-fetch,tool-required,1,1,"matched ''https://api.example.com/v2''",26,973,728,245,0.000341,2553,
+grok,mastra,grok-3-mini,m2-version-then-cite,multi-step,0,1,"length 211 ok, all keywords present",211,1128,757,371,0.000413,3824,
+grok,mastra,grok-3-mini,m2-version-then-cite,multi-step,1,1,"length 175 ok, all keywords present",175,1111,757,354,0.000404,3527,

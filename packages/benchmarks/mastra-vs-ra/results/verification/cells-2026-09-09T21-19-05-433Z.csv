@@ -1,0 +1,6 @@
+tier,framework,model,task,category,runIndex,success,reason,outputLen,tokens,inputTokens,outputTokens,costUsd,durationMs,error
+frontier,ra,claude-haiku-4-5,f1-web-search-error,failure-recovery,0,0,"none of [''cannot'',''unable'',''failed'',''could not'',''couldn't''] found in output",0,4683,4384,299,0.005879,6689,
+frontier,ra,claude-haiku-4-5,f1-web-search-error,failure-recovery,1,0,"none of [''cannot'',''unable'',''failed'',''could not'',''couldn't''] found in output",0,4685,4383,302,0.005893,6723,
+frontier,ra,claude-haiku-4-5,f1-web-search-error,failure-recovery,2,0,"none of [''cannot'',''unable'',''failed'',''could not'',''couldn't''] found in output",0,4682,4383,299,0.005878,6631,
+frontier,ra,claude-haiku-4-5,f1-web-search-error,failure-recovery,3,0,"none of [''cannot'',''unable'',''failed'',''could not'',''couldn't''] found in output",0,4687,4383,304,0.005903,6730,
+frontier,ra,claude-haiku-4-5,f1-web-search-error,failure-recovery,4,0,"none of [''cannot'',''unable'',''failed'',''could not'',''couldn't''] found in output",0,4686,4383,303,0.005898,6550,

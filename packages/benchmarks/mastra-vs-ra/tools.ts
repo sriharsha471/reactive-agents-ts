@@ -124,7 +124,7 @@ export function toolsForMastra(specs: readonly ToolSpec[]) {
       id: b.name,
       description: b.description,
       inputSchema: z.object(b.inputZodShape),
-      execute: async ({ context }: { context: Record<string, unknown> }) => b.run(context),
+      execute: async (inputData: Record<string, unknown>) => b.run(inputData),
     });
   }
   return out;

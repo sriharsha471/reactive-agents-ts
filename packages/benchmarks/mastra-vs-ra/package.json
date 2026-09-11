@@ -10,10 +10,11 @@
     "smoke:openai": "bun smoke-openai.ts"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.0",
-    "@ai-sdk/openai": "^3.0.0",
-    "@mastra/core": "latest",
-    "ai": "^6.0.191",
+    "@ai-sdk/anthropic": "^4.0.50",
+    "@ai-sdk/openai": "^4.0.62",
+    "@ai-sdk/xai": "^4.0.55",
+    "@mastra/core": "^1.64.0",
+    "ai": "^7.0.94",
     "dotenv": "^16.0.0",
     "effect": "^3.10.0",
     "ollama-ai-provider-v2": "^1.0.0",

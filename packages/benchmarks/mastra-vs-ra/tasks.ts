@@ -203,6 +203,151 @@ export const TASKS: readonly Task[] = [
     },
     tags: ["pure-knowledge", "no-tools-required", "explicit-no-tool"],
   },
+  // ── Knowledge recall (additional) ──────────────────────────────────────────
+  {
+    id: "k4-http-status-404",
+    category: "knowledge",
+    prompt: "What does HTTP status code 404 mean? Answer in one sentence.",
+    tools: [{ kind: "none" }],
+    maxIterations: 3,
+    verifier: { kind: "contains-any", substrings: ["not found", "unable to find", "cannot find", "could not find", "couldn't find", "no resource", "unable to locate"] },
+    tags: ["pure-knowledge", "single-fact", "short-output"],
+  },
+  {
+    id: "k5-binary-search-complexity",
+    category: "knowledge",
+    prompt: "What is the time complexity of binary search on a sorted array? Give the Big-O notation.",
+    tools: [{ kind: "none" }],
+    maxIterations: 3,
+    verifier: { kind: "regex", pattern: "o\\(\\s*\\\\?log", flags: "i" },
+    tags: ["pure-knowledge", "single-fact", "short-output"],
+  },
+
+  // ── Tool-required (additional) ───────────────────────────────────────────
+  {
+    id: "t4-calculator-percent",
+    category: "tool-required",
+    prompt:
+      "Use the bench_calculator tool to compute 15 percent of 240. The tool takes an 'expression' string. Return only the final number.",
+    tools: [{ kind: "calculator" }],
+    maxIterations: 4,
+    verifier: { kind: "contains-any", substrings: ["36"] },
+    tags: ["single-tool", "deterministic-result"],
+  },
+  {
+    id: "t5-kv-region",
+    category: "tool-required",
+    prompt: "Use the bench_lookup tool to fetch the value for key 'deploy-region'. Return only the value.",
+    tools: [
+      {
+        kind: "key-value-store",
+        preloaded: { "deploy-region": "us-west-2", "deploy-env": "production" },
+      },
+    ],
+    maxIterations: 4,
+    verifier: { kind: "contains-any", substrings: ["us-west-2"] },
+    tags: ["single-tool", "exact-extract"],
+  },
+  {
+    id: "t6-web-search-summarize",
+    category: "tool-required",
+    prompt:
+      "Use the bench_web_search tool to look up 'PostgreSQL vs SQLite'. Summarize the top result in one sentence.",
+    tools: [
+      {
+        kind: "web-search-success",
+        returnsCount: 3,
+        sampleSnippet:
+          "PostgreSQL is a full-featured client-server relational database; SQLite is an embedded, serverless, file-based database. https://postgresql.org",
+      },
+    ],
+    maxIterations: 5,
+    verifier: { kind: "contains-any", substrings: ["postgres", "sqlite"] },
+    tags: ["single-tool", "summarize"],
+  },
+
+  // ── Multi-step (additional) ──────────────────────────────────────────────
+  {
+    id: "m3-region-then-explain",
+    category: "multi-step",
+    prompt:
+      "Use the bench_lookup tool to get the value for key 'deploy-region'. Then explain in one sentence why deploying close to users reduces latency. Final answer should include both the region value AND the explanation.",
+    tools: [
+      { kind: "key-value-store", preloaded: { "deploy-region": "eu-central-1" } },
+    ],
+    maxIterations: 5,
+    verifier: {
+      kind: "long-form",
+      minLength: 60,
+      mustContain: ["eu-central-1", "latency"],
+    },
+    tags: ["tool-then-reason", "two-step"],
+  },
+  {
+    id: "m4-cap-theorem",
+    category: "multi-step",
+    prompt:
+      "Explain the CAP theorem. Cover consistency, availability, and partition tolerance in three distinct sections, " +
+      "and state which two a distributed system can guarantee simultaneously.",
+    tools: [{ kind: "none" }],
+    maxIterations: 6,
+    verifier: {
+      kind: "long-form",
+      minLength: 400,
+      mustContain: ["consisten", "availab", "partition"],
+    },
+    tags: ["multi-section", "comparative", "long-output"],
+  },
+
+  // ── Critique / refinement (additional) ───────────────────────────────────
+  {
+    id: "c2-sql-vs-nosql",
+    category: "critique",
+    prompt:
+      "What are the main trade-offs between SQL and NoSQL databases for a high-write-throughput application? " +
+      "After your first answer, critique it, then provide an improved final answer.",
+    tools: [{ kind: "none" }],
+    maxIterations: 8,
+    verifier: {
+      kind: "long-form",
+      minLength: 300,
+      mustContain: ["sql", "trade"],
+    },
+    tags: ["self-critique", "long-output", "no-tools"],
+  },
+
+  // ── Failure-recovery (additional) ────────────────────────────────────────
+  {
+    id: "f3-kv-missing-key",
+    category: "failure-recovery",
+    prompt:
+      "Use the bench_lookup tool to fetch the value for key 'nonexistent-config-key'. If the key is not found, " +
+      "state clearly that the key does not exist rather than inventing a value.",
+    tools: [
+      { kind: "key-value-store", preloaded: { "other-key": "some-value" } },
+    ],
+    maxIterations: 4,
+    verifier: {
+      kind: "contains-any",
+      substrings: ["not found", "does not exist", "doesn't exist", "no value", "not exist"],
+    },
+    tags: ["tool-returns-miss", "honest-failure"],
+  },
+  {
+    id: "f4-web-search-error-recovery-2",
+    category: "failure-recovery",
+    prompt:
+      "Use the bench_web_search tool to find today's weather in an unspecified city. If you receive an error, " +
+      "stop trying the tool and state that you cannot fetch live weather data.",
+    tools: [{ kind: "web-search-error", errorMessage: "Service unavailable — upstream timeout" }],
+    maxIterations: 6,
+    verifier: {
+      kind: "contains-any",
+      substrings: ["cannot", "unable", "failed", "could not", "couldn't"],
+    },
+    tags: ["tool-fails-always", "honest-failure"],
+  },
+
 ];
 
 export function getTaskById(id: string): Task | undefined {

@@ -31,15 +31,30 @@ import { verify } from "./verifier.js";
 import { toolsForReactiveAgents, toolsForMastra } from "./tools.js";
 
 // ── Framework wrappers ──────────────────────────────────────────────────────
-
-import { ReactiveAgents, HarnessProfile } from "reactive-agents";
+//
+// IMPORTANT: dynamically imported AFTER dotenvConfig() above, not statically.
+// `reactive-agents`'s `llmConfigFromEnv` (packages/llm-provider/src/llm-config.ts)
+// is an eagerly-evaluated module-level const that snapshots process.env at
+// IMPORT time. Static ESM imports are hoisted above all other top-level code
+// regardless of source position, so a static `import { ReactiveAgents } from
+// "reactive-agents"` here would resolve BEFORE the dotenvConfig() calls run,
+// baking in `undefined` for every provider key. Native-SDK providers
+// (Anthropic, Ollama) mask this because their SDKs independently re-read
+// process.env at request time; OpenAI-compatible providers (xai/groq/litellm)
+// do NOT — the generic `openai` npm client falls back to its own
+// `OPENAI_API_KEY` default when handed `apiKey: undefined`, silently sending
+// the OpenAI key to a third-party host instead of erroring. Confirmed live:
+// grok cells failed 100% with x.ai's "Incorrect API key provided", and the
+// key it actually sent (verified via a fetch probe) was the OpenAI project
+// key. Filed as a real framework bug (not bench-only) — see debrief.
+const { ReactiveAgents, HarnessProfile } = await import("reactive-agents");
 import { Agent } from "@mastra/core/agent";
 import { stepCountIs } from "ai";
 
-type ProviderName = "anthropic" | "openai" | "ollama";
+type ProviderName = "anthropic" | "openai" | "ollama" | "xai";
 
 interface ModelTier {
-  readonly id: "frontier" | "mini" | "local";
+  readonly id: "frontier" | "mini" | "grok" | "local";
   readonly provider: ProviderName;
   readonly modelId: string;
   readonly costPer1MInput: number;
@@ -47,8 +62,9 @@ interface ModelTier {
 }
 
 const TIERS: readonly ModelTier[] = [
-  { id: "frontier",  provider: "anthropic", modelId: "claude-sonnet-4-6",   costPer1MInput: 3.0,  costPer1MOutput: 15.0 },
+  { id: "frontier",  provider: "anthropic", modelId: "claude-haiku-4-5",    costPer1MInput: 1.0,  costPer1MOutput: 5.0  },
   { id: "mini",      provider: "openai",    modelId: "gpt-4o-mini",         costPer1MInput: 0.15, costPer1MOutput: 0.6  },
+  { id: "grok",      provider: "xai",       modelId: "grok-3-mini",         costPer1MInput: 0.3,  costPer1MOutput: 0.5  },
   { id: "local",     provider: "ollama",    modelId: "qwen3.5:latest",      costPer1MInput: 0,    costPer1MOutput: 0   },
 ];
 
@@ -57,6 +73,7 @@ interface Cell {
   readonly framework: "ra" | "ra-lean" | "mastra";
   readonly model: string;
   readonly task: string;
+  readonly runIndex: number;
   readonly category: string;
   readonly success: boolean;
   readonly reason: string;
@@ -157,6 +174,10 @@ async function buildMastraModel(tier: ModelTier) {
     const { openai } = await import("@ai-sdk/openai");
     return openai(tier.modelId);
   }
+  if (tier.provider === "xai") {
+    const { xai } = await import("@ai-sdk/xai");
+    return xai(tier.modelId);
+  }
   // ollama — ollama-ai-provider-v2 (AI SDK v5 compatible)
   const { createOllama } = await import("ollama-ai-provider-v2");
   return createOllama()(tier.modelId);
@@ -243,7 +264,7 @@ function selectedFrameworks(): readonly ("ra" | "ra-lean" | "mastra")[] {
 // ── CSV helpers ─────────────────────────────────────────────────────────────
 
 function csv(cells: Cell[]): string {
-  const header = "tier,framework,model,task,category,success,reason,outputLen,tokens,inputTokens,outputTokens,costUsd,durationMs,error";
+  const header = "tier,framework,model,task,category,runIndex,success,reason,outputLen,tokens,inputTokens,outputTokens,costUsd,durationMs,error";
   const rows = cells.map((c) =>
     [
       c.tier,
@@ -251,6 +272,7 @@ function csv(cells: Cell[]): string {
       c.model.replace(/[,:]/g, "_"),
       c.task,
       c.category,
+      c.runIndex,
       c.success ? 1 : 0,
       `"${c.reason.replace(/"/g, "''")}"`,
       c.outputLength,
@@ -302,26 +324,31 @@ async function main() {
   console.log(`Frameworks: ${frameworks.join(", ")}`);
   console.log(`Cells:      ${tiers.length * tasks.length * frameworks.length}`);
 
+  const runsPerCell = Math.max(1, Number(process.env.BENCH_RUNS ?? "1"));
+  console.log(`Runs/cell:  ${runsPerCell}`);
+
   const cells: Cell[] = [];
   for (const tier of tiers) {
     for (const task of tasks) {
       for (const fw of frameworks) {
-        const label = `[${tier.id} · ${fw} · ${task.id}]`;
-        process.stdout.write(`${label.padEnd(50)} `);
-        const partial =
-          fw === "ra"
-            ? await runReactiveAgents(task, tier)
-            : fw === "ra-lean"
-              ? await runReactiveAgents(task, tier, { lean: true })
-              : await runMastra(task, tier);
-        const cell: Cell = { tier: tier.id, framework: fw, ...partial };
-        cells.push(cell);
-        const status = cell.success ? "✓" : "✗";
-        const errSuffix = cell.error ? ` ERR: ${cell.error.slice(0, 60)}` : "";
-        const inOut = cell.inputTokens || cell.outputTokens
-          ? ` (${cell.inputTokens ?? 0}in/${cell.outputTokens ?? 0}out)`
-          : "";
-        console.log(`${status} ${(cell.durationMs / 1000).toFixed(1)}s ${cell.tokens}tok${inOut}${errSuffix}`);
+        for (let runIndex = 0; runIndex < runsPerCell; runIndex++) {
+          const label = `[${tier.id} · ${fw} · ${task.id} · r${runIndex + 1}]`;
+          process.stdout.write(`${label.padEnd(50)} `);
+          const partial =
+            fw === "ra"
+              ? await runReactiveAgents(task, tier)
+              : fw === "ra-lean"
+                ? await runReactiveAgents(task, tier, { lean: true })
+                : await runMastra(task, tier);
+          const cell: Cell = { tier: tier.id, framework: fw, runIndex, ...partial };
+          cells.push(cell);
+          const status = cell.success ? "✓" : "✗";
+          const errSuffix = cell.error ? ` ERR: ${cell.error.slice(0, 60)}` : "";
+          const inOut = cell.inputTokens || cell.outputTokens
+            ? ` (${cell.inputTokens ?? 0}in/${cell.outputTokens ?? 0}out)`
+            : "";
+          console.log(`${status} ${(cell.durationMs / 1000).toFixed(1)}s ${cell.tokens}tok${inOut}${errSuffix}`);
+        }
       }
     }
   }

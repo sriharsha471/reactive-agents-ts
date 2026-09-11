@@ -1942,6 +1942,13 @@ export class ReactiveAgent<TOut = unknown> {
      *               first iteration boundary.
      *
      * Note: streamed results do not carry the typed structured `object`; use `streamObject()` for streaming structured output.
+     *
+     * Error contract vs `run()`: when the agent has been halted (`stop()`,
+     * `terminate()`, or a triggered kill switch), `run()` REJECTS with
+     * `KillSwitchTriggeredError`, while `runStream()` does NOT throw — it yields a
+     * terminal `StreamError` (or `StreamCancelled` for an aborted signal) and the
+     * generator completes normally. Callers porting `try/catch` kill-switch handling
+     * from `run()` must branch on the terminal event tag instead.
      */
     runStream(
         input: string,

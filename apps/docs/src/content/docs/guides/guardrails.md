@@ -72,6 +72,17 @@ agent.run("Do something long-running...");
 
 When `.withKillSwitch()` is enabled, the `guardedPhase()` wrapper checks at the start of each execution phase whether a halt has been triggered. If so, the task fails immediately with a `KillSwitchTriggeredError`.
 
+:::caution[`run()` throws, `runStream()` does not]
+The two entry points report a halted agent differently:
+
+- `agent.run(...)` **rejects** with `KillSwitchTriggeredError`.
+- `agent.runStream(...)` does **not** reject. It yields a terminal `StreamError` event (or `StreamCancelled` when an `AbortSignal` fired) and the generator completes normally.
+
+This is deliberate — the stream contract is event-based — but it means `try`/`catch` logic written for `run()` will silently never fire when ported to `runStream()`. Branch on the terminal event tag instead.
+
+Once an agent instance is stopped or terminated, every later `run()` on that same instance rejects with the same error. There is no un-stick method on the agent; build a fresh agent. (`KillSwitchService.clear(agentId)` exists at the service layer but is not exposed on the agent facade.)
+:::
+
 #### Full Lifecycle Control
 
 The `KillSwitchService` provides fine-grained lifecycle control beyond hard stops:

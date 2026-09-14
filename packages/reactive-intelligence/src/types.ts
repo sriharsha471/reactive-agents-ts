@@ -307,6 +307,18 @@ export type ControllerEvalParams = {
    */
   readonly hasUserOutput?: boolean;
   /**
+   * Kernel-side loop evidence. The kernel's repeated-identical-failure streak
+   * counter is the single trigger authority for "the agent is stuck"; this
+   * evaluator only escalates a stall the kernel has already acted on.
+   *
+   * `redirectsIssued` is the kernel's `failureRecoveryRedirects` counter (reset
+   * across strategy switches). When omitted, `evaluateStrategySwitch` fails
+   * CLOSED (no switch) — a caller that has not been updated to plumb this must
+   * not silently fall back to the old independent-trigger behavior, which is
+   * exactly the RC-3 double-detector defect this field exists to close.
+   */
+  readonly kernelLoopSignal?: { readonly redirectsIssued: number };
+  /**
    * Operational model tier — drives tier-gated evaluator thresholds (e.g.
    * stall-detect's STALL_WINDOW_BY_TIER: local=2, mid=3, large=4, frontier=5).
    *

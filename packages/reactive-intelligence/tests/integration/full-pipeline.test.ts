@@ -63,6 +63,10 @@ describe("Reactive Intelligence Pipeline Integration", () => {
         config: { earlyStop: false, contextCompression: false, strategySwitch: true },
         contextPressure: 0.3,
         behavioralLoopScore: 0.8,
+        // RC-3: the kernel's repeated-identical-failure redirect streak is the
+        // single loop-stuck trigger authority — this evaluator only escalates a
+        // stall the kernel already acted on, so a switch case must corroborate.
+        kernelLoopSignal: { redirectsIssued: 1 },
       };
 
       const program = Effect.gen(function* () {

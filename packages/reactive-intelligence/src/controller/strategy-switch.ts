@@ -21,6 +21,13 @@ export function evaluateStrategySwitch(
   if (entropyHistory.length < flatCount) return null;
   if (iteration < 3) return null;
 
+  // Single-authority rule: the kernel's redirect is the trigger, entropy is the
+  // escalation. Without kernel corroboration this evaluator would fire one
+  // iteration behind the kernel and stack a second, unrelated piece of guidance
+  // into the same context window (observed: run 01M2GM1SZ0FVXDD3TNN0F9FZ5A,
+  // kernel redirect at iter 2, entropy switch at iter 3).
+  if ((params.kernelLoopSignal?.redirectsIssued ?? 0) < 1) return null;
+
   // Check last flatCount entries all have shape "flat"
   const recent = entropyHistory.slice(-flatCount);
   const allFlat = recent.every((e) => e.trajectory.shape === "flat");

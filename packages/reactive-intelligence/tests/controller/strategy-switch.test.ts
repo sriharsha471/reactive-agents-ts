@@ -16,6 +16,12 @@ const makeParams = (overrides?: Partial<ControllerEvalParams>): ControllerEvalPa
   config: { earlyStop: false, contextCompression: false, strategySwitch: true },
   contextPressure: 0.3,
   behavioralLoopScore: 0.8,
+  // The kernel is the sole loop-stuck trigger authority (RC-3 fix): the
+  // evaluator only escalates a stall the kernel already redirected on. These
+  // cases pin the entropy/loop-score conditions, so they corroborate by
+  // default; the corroboration gate itself is pinned in
+  // tests/strategy-switch-confidence.test.ts.
+  kernelLoopSignal: { redirectsIssued: 1 },
   ...overrides,
 });
 

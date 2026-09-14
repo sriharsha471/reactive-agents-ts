@@ -131,6 +131,11 @@ export interface EntropyScoredEvent extends TraceEventBase {
   }
   /** Count of non-null sources, 0-5. Below 5 means the composite is a partial signal. */
   readonly sourcesPresent: number
+  /** Sensor's own self-assessment. "low" on short runs and degraded-source runs. */
+  readonly confidence: "high" | "medium" | "low"
+  /** EntropyTrajectory.shape, or "unknown" when no trajectory was supplied. */
+  readonly trajectoryShape: string
+  readonly modelTier: "frontier" | "local" | "unknown"
 }
 
 export interface DecisionEvaluatedEvent extends TraceEventBase {
@@ -485,7 +490,7 @@ const REQUIRED_FIELDS_BY_KIND: Readonly<Record<TraceEvent["kind"], readonly stri
   "phase-exit": ["phase"],
   "iteration-enter": [],
   "iteration-exit": [],
-  "entropy-scored": ["composite", "sources", "sourcesPresent"],
+  "entropy-scored": ["composite", "sources", "sourcesPresent", "confidence"],
   "decision-evaluated": ["decisionType", "confidence", "reason"],
   "intervention-dispatched": ["decisionType", "patchKind", "cost", "telemetry"],
   "intervention-suppressed": ["decisionType", "reason"],

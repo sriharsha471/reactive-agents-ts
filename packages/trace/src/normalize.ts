@@ -106,6 +106,13 @@ export function toTraceEvent(raw: AgentEvent, seq: number): TraceEvent | null {
         contextPressure: src.contextPressure,
       }
       const sourcesPresent = Object.values(sources).filter((v) => v !== null).length
+      const traj = raw.trajectory as { shape?: string } | undefined
+      const confidence =
+        raw.confidence === "high" || raw.confidence === "medium" || raw.confidence === "low"
+          ? raw.confidence
+          : "low"
+      const modelTier =
+        raw.modelTier === "frontier" || raw.modelTier === "local" ? raw.modelTier : "unknown"
       const ev: EntropyScoredEvent = {
         kind: "entropy-scored",
         runId: raw.taskId,
@@ -115,6 +122,9 @@ export function toTraceEvent(raw: AgentEvent, seq: number): TraceEvent | null {
         composite: raw.composite,
         sources,
         sourcesPresent,
+        confidence,
+        trajectoryShape: traj?.shape ?? "unknown",
+        modelTier,
       }
       return ev
     }

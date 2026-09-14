@@ -99,4 +99,44 @@ describe("toTraceEvent", () => {
     expect(ev.sources.semantic).toBeNull();
     expect(ev.sourcesPresent).toBe(4);
   });
+
+  it("EntropyScored carries confidence, trajectory shape, and model tier", () => {
+    const raw = {
+      _tag: "EntropyScored",
+      taskId: "run-rich",
+      timestamp: 1000,
+      iteration: 5,
+      composite: 0.61,
+      sources: {
+        token: null,
+        structural: 0.55,
+        semantic: null,
+        behavioral: 0.33,
+        contextPressure: 0.1,
+      },
+      trajectory: { history: [0.5, 0.58, 0.61], derivative: 0.03, momentum: 0.2, shape: "flat" },
+      confidence: "low",
+      modelTier: "local",
+      iterationWeight: 0.42,
+    } as unknown as AgentEvent;
+    const ev = toTraceEvent(raw, 0) as EntropyScoredEvent;
+    expect(ev.confidence).toBe("low");
+    expect(ev.trajectoryShape).toBe("flat");
+    expect(ev.modelTier).toBe("local");
+  });
+
+  it("EntropyScored defaults gracefully when rich fields are absent", () => {
+    const raw = {
+      _tag: "EntropyScored",
+      taskId: "run-bare",
+      timestamp: 1000,
+      iteration: 1,
+      composite: 0.3,
+      sources: { token: null, structural: 0.4, semantic: null, behavioral: 0.2, contextPressure: 0.05 },
+    } as unknown as AgentEvent;
+    const ev = toTraceEvent(raw, 0) as EntropyScoredEvent;
+    expect(ev.confidence).toBe("low");
+    expect(ev.trajectoryShape).toBe("unknown");
+    expect(ev.modelTier).toBe("unknown");
+  });
 });

@@ -423,6 +423,17 @@ export interface CostSignal {
   readonly inOutSplitAvailable: boolean;
 }
 
+export interface EntropyDegradation {
+  /** Lowest sourcesPresent (0-5) seen across all entropy-scored events; 0 when none fired. */
+  readonly minSourcesPresent: number;
+  /** Highest sourcesPresent (0-5) seen across all entropy-scored events; 0 when none fired. */
+  readonly maxSourcesPresent: number;
+  /** Iterations where the composite was a partial signal (sourcesPresent < 5). */
+  readonly degradedIterations: number;
+  /** Iterations where the sensor self-reported low confidence. */
+  readonly lowConfidenceIterations: number;
+}
+
 export interface ReasoningTrajectory {
   readonly entropyFirst?: number;
   readonly entropyLast?: number;
@@ -431,6 +442,8 @@ export interface ReasoningTrajectory {
   readonly decisionTypes: Readonly<Record<string, number>>;
   /** Final step composition, from the last snapshot. */
   readonly stepsByTypeFinal: Readonly<Record<string, number>>;
+  /** Surfaces partial-source composites (RC-1/RC-2) without hand-grepping JSONL. */
+  readonly entropyDegradation: EntropyDegradation;
 }
 
 export interface ToolOutcome {
@@ -602,7 +615,8 @@ export function analyzeRun(trace: Trace, opts: AnalyzeOptions = {}): RunAnalysis
   };
 
   // ── Reasoning trajectory ──────────────────────────────────────────────────
-  const entropies = ev.filter(isEntropy).map((e) => e.composite);
+  const entropyEvents = ev.filter(isEntropy);
+  const entropies = entropyEvents.map((e) => e.composite);
   const entropyFirst = entropies.at(0);
   const entropyLast = entropies.at(-1);
   let entropyShape: ReasoningTrajectory["entropyShape"] = "unknown";
@@ -612,12 +626,23 @@ export function analyzeRun(trace: Trace, opts: AnalyzeOptions = {}): RunAnalysis
   }
   const decisionTypes: Record<string, number> = {};
   for (const d of ev.filter(isDecision)) decisionTypes[d.decisionType] = (decisionTypes[d.decisionType] ?? 0) + 1;
+  // RC-1/RC-2: surface degraded-source composites (sourcesPresent < 5) and
+  // low-confidence iterations so they're visible in rax:diagnose without
+  // hand-grepping JSONL.
+  const sourcesCounts = entropyEvents.map((e) => e.sourcesPresent);
+  const entropyDegradation: EntropyDegradation = {
+    minSourcesPresent: sourcesCounts.length > 0 ? Math.min(...sourcesCounts) : 0,
+    maxSourcesPresent: sourcesCounts.length > 0 ? Math.max(...sourcesCounts) : 0,
+    degradedIterations: entropyEvents.filter((e) => e.sourcesPresent < 5).length,
+    lowConfidenceIterations: entropyEvents.filter((e) => e.confidence === "low").length,
+  };
   const reasoning: ReasoningTrajectory = {
     ...(entropyFirst !== undefined ? { entropyFirst } : {}),
     ...(entropyLast !== undefined ? { entropyLast } : {}),
     entropyShape,
     decisionTypes,
     stepsByTypeFinal: lastSnap?.stepsByType ?? {},
+    entropyDegradation,
   };
 
   // ── Tool outcomes ──────────────────────────────────────────────────────────

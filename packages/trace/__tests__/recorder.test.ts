@@ -16,6 +16,9 @@ describe("TraceRecorderService", () => {
         composite: 0.42,
         sources: { token: 0.1, structural: 0.2, semantic: 0.3, behavioral: 0.4, contextPressure: 0 },
         sourcesPresent: 5,
+        confidence: "high",
+        trajectoryShape: "ascending",
+        modelTier: "frontier",
       }
       yield* recorder.emit(ev)
       const events = yield* recorder.snapshot("r1")

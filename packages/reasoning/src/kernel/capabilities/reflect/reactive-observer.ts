@@ -73,6 +73,11 @@ export function runReactiveObserver(
    * repeated-identical-failure streak redirect is the single trigger authority for
    * "the agent is stuck"; RI's strategy-switch evaluator only escalates a stall the
    * kernel has already acted on. Omitted → RI fails closed (no strategy switch).
+   *
+   * Scope note: this counter only increments on unresolved TOOL failure
+   * recovery (`recovery.failedUnresolved.length > 0`) — RI's entropy
+   * switch-strategy evaluator is therefore unreachable for thought-only loops,
+   * or for tool calls that succeed but return unproductive results.
    */
   failureRecoveryRedirects?: number,
 ): Effect.Effect<{ state: KernelState; prevStepCount: number }, never> {

@@ -316,6 +316,12 @@ export type ControllerEvalParams = {
    * CLOSED (no switch) — a caller that has not been updated to plumb this must
    * not silently fall back to the old independent-trigger behavior, which is
    * exactly the RC-3 double-detector defect this field exists to close.
+   *
+   * Scope note: `failureRecoveryRedirects` only increments on unresolved TOOL
+   * failure recovery (`recovery.failedUnresolved.length > 0` in
+   * iterate-pass.ts / loop-resolution.ts / stall-deliverable.ts) — this
+   * evaluator is therefore unreachable for thought-only loops, or for tool
+   * calls that succeed but return unproductive results.
    */
   readonly kernelLoopSignal?: { readonly redirectsIssued: number };
   /**

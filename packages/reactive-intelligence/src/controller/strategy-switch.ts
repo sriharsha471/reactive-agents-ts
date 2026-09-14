@@ -26,6 +26,11 @@ export function evaluateStrategySwitch(
   // iteration behind the kernel and stack a second, unrelated piece of guidance
   // into the same context window (observed: run 01M2GM1SZ0FVXDD3TNN0F9FZ5A,
   // kernel redirect at iter 2, entropy switch at iter 3).
+  //
+  // Scope note: `redirectsIssued` only increments on unresolved TOOL failure
+  // recovery — this guard, and therefore this whole evaluator, is unreachable
+  // for thought-only loops, or for tool calls that succeed but return
+  // unproductive results.
   if ((params.kernelLoopSignal?.redirectsIssued ?? 0) < 1) return null;
 
   // Check last flatCount entries all have shape "flat"

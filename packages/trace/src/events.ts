@@ -129,7 +129,11 @@ export interface EntropyScoredEvent extends TraceEventBase {
     readonly behavioral: number
     readonly contextPressure: number
   }
-  /** Count of non-null sources, 0-5. Below 5 means the composite is a partial signal. */
+  /**
+   * Count of non-null sources, 2-4 (excludes contextPressure, which is
+   * structurally never null — matches the sensor's own confidence-driving
+   * count in composite.ts). Below 4 means the composite is a partial signal.
+   */
   readonly sourcesPresent: number
   /** Sensor's own self-assessment. "low" on short runs and degraded-source runs. */
   readonly confidence: "high" | "medium" | "low"

@@ -105,7 +105,23 @@ export function toTraceEvent(raw: AgentEvent, seq: number): TraceEvent | null {
         behavioral: src.behavioral,
         contextPressure: src.contextPressure,
       }
-      const sourcesPresent = Object.values(sources).filter((v) => v !== null).length
+      // Matches the sensor's own confidence-driving count (composite.ts) —
+      // contextPressure is excluded because it is structurally never null, so
+      // including it would make sourcesPresent range 3-5 instead of the real
+      // 2-4 the sensor's confidence tiers are keyed off.
+      const computedSourcesPresent =
+        (sources.token !== null ? 1 : 0) +
+        1 + // structural always present
+        (sources.semantic !== null ? 1 : 0) +
+        1 // behavioral always present
+      // Fallback for pre-branch bus events recorded before this was published
+      // at the source — derive from `sources` when the raw event doesn't
+      // already carry it. `sourcesPresent` is not part of the raw bus-event
+      // type (it's a trace-derived field), so it's read defensively via an
+      // untyped view of the event.
+      const rawSourcesPresent = (raw as unknown as { sourcesPresent?: unknown }).sourcesPresent
+      const sourcesPresent =
+        typeof rawSourcesPresent === "number" ? rawSourcesPresent : computedSourcesPresent
       const traj = raw.trajectory as { shape?: string } | undefined
       const confidence =
         raw.confidence === "high" || raw.confidence === "medium" || raw.confidence === "low"

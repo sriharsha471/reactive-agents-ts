@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { toTraceEvent } from "../src/normalize.js";
 import type { AgentEvent } from "@reactive-agents/core";
+import { isTraceEvent } from "../src/events.js";
 import type { EntropyScoredEvent, DecisionEvaluatedEvent } from "../src/events.js";
 
 const base = { taskId: "run-1", timestamp: 1000 };
@@ -76,7 +77,9 @@ describe("toTraceEvent", () => {
     expect(ev.sources.token).toBeNull();
     expect(ev.sources.semantic).toBeNull();
     expect(ev.sources.structural).toBe(0.55);
-    expect(ev.sourcesPresent).toBe(3);
+    // sourcesPresent excludes contextPressure (never null) — only structural
+    // + behavioral present here (token/semantic null).
+    expect(ev.sourcesPresent).toBe(2);
   });
 
   it("EntropyScored keeps a genuine zero distinct from an absent source", () => {
@@ -97,7 +100,9 @@ describe("toTraceEvent", () => {
     const ev = toTraceEvent(raw, 0) as EntropyScoredEvent;
     expect(ev.sources.token).toBe(0);
     expect(ev.sources.semantic).toBeNull();
-    expect(ev.sourcesPresent).toBe(4);
+    // sourcesPresent excludes contextPressure — token(0)/structural/behavioral
+    // present, semantic null.
+    expect(ev.sourcesPresent).toBe(3);
   });
 
   it("EntropyScored carries confidence, trajectory shape, and model tier", () => {
@@ -138,6 +143,27 @@ describe("toTraceEvent", () => {
     expect(ev.confidence).toBe("low");
     expect(ev.trajectoryShape).toBe("unknown");
     expect(ev.modelTier).toBe("unknown");
+  });
+
+  // I-2 (2026-09-14 final review, entropy-system-hardening): REQUIRED_FIELDS_BY_KIND
+  // now requires sourcesPresent + confidence on entropy-scored, and isTraceEvent
+  // hard-rejects (loadTrace silently drops) any event missing a required field.
+  // A pre-branch raw bus event — no sourcesPresent/confidence keys at all, only
+  // composite+sources — must still normalize into a TraceEvent that PASSES
+  // isTraceEvent, or the pre-branch trace corpus becomes silently unparseable.
+  it("normalizes an old-shape raw event (no sourcesPresent/confidence keys) into a valid, non-rejected TraceEvent", () => {
+    const raw = {
+      _tag: "EntropyScored",
+      taskId: "run-old-shape",
+      timestamp: 1000,
+      iteration: 2,
+      composite: 0.45,
+      sources: { token: 0.1, structural: 0.2, semantic: 0.3, behavioral: 0.4, contextPressure: 0.05 },
+    } as unknown as AgentEvent;
+    const ev = toTraceEvent(raw, 0) as EntropyScoredEvent;
+    expect(ev.sourcesPresent).toBe(4);
+    expect(ev.confidence).toBe("low");
+    expect(isTraceEvent(ev)).toBe(true);
   });
 
   it("ReactiveDecision prefers an explicit confidence over the entropy-delta formula", () => {

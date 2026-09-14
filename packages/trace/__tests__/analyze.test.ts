@@ -110,9 +110,10 @@ function richFixture(opts: { substantive: boolean }): Trace {
 }
 
 // Matches the real emitter shape (Tasks 1-2, packages/trace/src/normalize.ts):
-// every entropy-scored event now carries sourcesPresent (0-5) + confidence.
-// A hand-built literal missing either is silently dropped by isTraceEvent/
-// loadTrace — see REQUIRED_FIELDS_BY_KIND["entropy-scored"] in events.ts.
+// every entropy-scored event now carries sourcesPresent (2-4; excludes
+// contextPressure, which is never null) + confidence. A hand-built literal
+// missing either is silently dropped by isTraceEvent/loadTrace — see
+// REQUIRED_FIELDS_BY_KIND["entropy-scored"] in events.ts.
 function makeEntropyEvent(o: {
   iter: number;
   composite: number;
@@ -137,13 +138,13 @@ function makeEntropyEvent(o: {
 describe("analyzeRun — full decision-grade signal", () => {
   it("reports entropy source degradation", () => {
     const events = [
-      makeEntropyEvent({ iter: 3, composite: 0.5, sourcesPresent: 3, confidence: "low" }),
-      makeEntropyEvent({ iter: 4, composite: 0.55, sourcesPresent: 3, confidence: "low" }),
-      makeEntropyEvent({ iter: 5, composite: 0.6, sourcesPresent: 5, confidence: "high" }),
+      makeEntropyEvent({ iter: 3, composite: 0.5, sourcesPresent: 2, confidence: "low" }),
+      makeEntropyEvent({ iter: 4, composite: 0.55, sourcesPresent: 2, confidence: "low" }),
+      makeEntropyEvent({ iter: 5, composite: 0.6, sourcesPresent: 4, confidence: "high" }),
     ];
     const a = analyzeRun({ runId: "r3", events });
-    expect(a.reasoning.entropyDegradation.minSourcesPresent).toBe(3);
-    expect(a.reasoning.entropyDegradation.maxSourcesPresent).toBe(5);
+    expect(a.reasoning.entropyDegradation.minSourcesPresent).toBe(2);
+    expect(a.reasoning.entropyDegradation.maxSourcesPresent).toBe(4);
     expect(a.reasoning.entropyDegradation.degradedIterations).toBe(2);
     expect(a.reasoning.entropyDegradation.lowConfidenceIterations).toBe(2);
   });

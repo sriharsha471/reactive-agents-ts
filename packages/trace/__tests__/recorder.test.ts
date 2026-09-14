@@ -15,7 +15,7 @@ describe("TraceRecorderService", () => {
         runId: "r1", timestamp: 1, iter: 0, seq: 0,
         composite: 0.42,
         sources: { token: 0.1, structural: 0.2, semantic: 0.3, behavioral: 0.4, contextPressure: 0 },
-        sourcesPresent: 5,
+        sourcesPresent: 4,
         confidence: "high",
         trajectoryShape: "ascending",
         modelTier: "frontier",

@@ -45,7 +45,7 @@ function buildTrace(runId: string, opts: { failedTool?: boolean } = {}): string 
       runId, timestamp: 3, iter: 0, seq: 2, kind: "entropy-scored",
       composite: 0.42,
       sources: { token: 0, structural: 0.4, semantic: 0.4, behavioral: 0.4, contextPressure: 0.4 },
-      sourcesPresent: 5,
+      sourcesPresent: 4,
       confidence: "medium",
       trajectoryShape: "ascending",
       modelTier: "frontier",

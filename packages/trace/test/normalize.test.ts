@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { toTraceEvent } from "../src/normalize.js";
 import type { AgentEvent } from "@reactive-agents/core";
+import type { EntropyScoredEvent } from "../src/events.js";
 
 const base = { taskId: "run-1", timestamp: 1000 };
 
@@ -53,5 +54,49 @@ describe("toTraceEvent", () => {
     } as unknown as AgentEvent;
     const ev = toTraceEvent(raw, 1);
     expect((ev as { iter: number }).iter).toBe(-1);
+  });
+
+  it("EntropyScored preserves null sources rather than coercing to 0", () => {
+    const raw = {
+      _tag: "EntropyScored",
+      taskId: "run-null-src",
+      timestamp: 1000,
+      iteration: 4,
+      composite: 0.52,
+      sources: {
+        token: null,
+        structural: 0.55,
+        semantic: null,
+        behavioral: 0.33,
+        contextPressure: 0.1,
+      },
+    } as unknown as AgentEvent;
+    const ev = toTraceEvent(raw, 0) as EntropyScoredEvent;
+    expect(ev.kind).toBe("entropy-scored");
+    expect(ev.sources.token).toBeNull();
+    expect(ev.sources.semantic).toBeNull();
+    expect(ev.sources.structural).toBe(0.55);
+    expect(ev.sourcesPresent).toBe(3);
+  });
+
+  it("EntropyScored keeps a genuine zero distinct from an absent source", () => {
+    const raw = {
+      _tag: "EntropyScored",
+      taskId: "run-real-zero",
+      timestamp: 1000,
+      iteration: 4,
+      composite: 0.4,
+      sources: {
+        token: 0,
+        structural: 0.5,
+        semantic: null,
+        behavioral: 0.2,
+        contextPressure: 0,
+      },
+    } as unknown as AgentEvent;
+    const ev = toTraceEvent(raw, 0) as EntropyScoredEvent;
+    expect(ev.sources.token).toBe(0);
+    expect(ev.sources.semantic).toBeNull();
+    expect(ev.sourcesPresent).toBe(4);
   });
 });

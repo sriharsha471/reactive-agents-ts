@@ -859,6 +859,8 @@ export const formatMetricsDashboard = (
       structural: trace.reduce((s, p) => s + p.sources.structural, 0) / trace.length,
       behavioral: trace.reduce((s, p) => s + p.sources.behavioral, 0) / trace.length,
       contextPressure: trace.reduce((s, p) => s + p.sources.contextPressure, 0) / trace.length,
+      // Treat unavailable sources (null) as 0 in the average: if logprobs aren't available
+      // for some iterations, we still want a fair average over the whole run.
       token: trace.reduce((s, p) => s + (p.sources.token ?? 0), 0) / trace.length,
       semantic: trace.reduce((s, p) => s + (p.sources.semantic ?? 0), 0) / trace.length,
     };

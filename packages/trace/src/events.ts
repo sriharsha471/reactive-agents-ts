@@ -121,12 +121,16 @@ export interface EntropyScoredEvent extends TraceEventBase {
   readonly kind: "entropy-scored"
   readonly composite: number
   readonly sources: {
-    readonly token: number
+    /** null = source structurally unavailable (e.g. no logprobs on Ollama), not a measured zero. */
+    readonly token: number | null
     readonly structural: number
-    readonly semantic: number
+    /** null = no embedding available or no prior thought to compare against. */
+    readonly semantic: number | null
     readonly behavioral: number
     readonly contextPressure: number
   }
+  /** Count of non-null sources, 0-5. Below 5 means the composite is a partial signal. */
+  readonly sourcesPresent: number
 }
 
 export interface DecisionEvaluatedEvent extends TraceEventBase {
@@ -481,7 +485,7 @@ const REQUIRED_FIELDS_BY_KIND: Readonly<Record<TraceEvent["kind"], readonly stri
   "phase-exit": ["phase"],
   "iteration-enter": [],
   "iteration-exit": [],
-  "entropy-scored": ["composite", "sources"],
+  "entropy-scored": ["composite", "sources", "sourcesPresent"],
   "decision-evaluated": ["decisionType", "confidence", "reason"],
   "intervention-dispatched": ["decisionType", "patchKind", "cost", "telemetry"],
   "intervention-suppressed": ["decisionType", "reason"],

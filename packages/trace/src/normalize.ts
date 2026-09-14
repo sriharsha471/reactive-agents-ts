@@ -91,6 +91,21 @@ export function toTraceEvent(raw: AgentEvent, seq: number): TraceEvent | null {
     }
 
     case "EntropyScored": {
+      const src = raw.sources as {
+        token: number | null
+        structural: number
+        semantic: number | null
+        behavioral: number
+        contextPressure: number
+      }
+      const sources = {
+        token: src.token,
+        structural: src.structural,
+        semantic: src.semantic,
+        behavioral: src.behavioral,
+        contextPressure: src.contextPressure,
+      }
+      const sourcesPresent = Object.values(sources).filter((v) => v !== null).length
       const ev: EntropyScoredEvent = {
         kind: "entropy-scored",
         runId: raw.taskId,
@@ -98,13 +113,8 @@ export function toTraceEvent(raw: AgentEvent, seq: number): TraceEvent | null {
         iter: raw.iteration,
         seq,
         composite: raw.composite,
-        sources: {
-          token: raw.sources.token ?? 0,
-          structural: raw.sources.structural,
-          semantic: raw.sources.semantic ?? 0,
-          behavioral: raw.sources.behavioral,
-          contextPressure: raw.sources.contextPressure,
-        },
+        sources,
+        sourcesPresent,
       }
       return ev
     }

@@ -90,6 +90,7 @@ export interface PendingGuidance {
 export interface KernelEntropyMeta {
   readonly taskDescription?: string;
   readonly modelId?: string;
+  readonly providerName?: string;
   readonly temperature?: number;
   readonly taskCategory?: string;
   readonly lastLogprobs?: readonly { token: string; logprob: number; topLogprobs?: readonly { token: string; logprob: number }[] }[];

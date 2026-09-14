@@ -114,6 +114,7 @@ export function runReactiveObserver(
             iteration: completedIteration,
             maxIterations: (s.meta.maxIterations as number) ?? 10,
             modelId: s.meta.entropy?.modelId ?? "unknown",
+            providerName: s.meta.entropy?.providerName,
             temperature: s.meta.entropy?.temperature ?? 0,
             priorThought,
             logprobs: s.meta.entropy?.lastLogprobs,

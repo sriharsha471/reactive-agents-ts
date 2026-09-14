@@ -384,6 +384,17 @@ here as the durable record:
 }
 ```
 
+Note: this entry's `tokenOverheadPct` (157.53) is the **raw**-token average
+(the mean of 97.6% and 217.4%); the entry's own `rationale` string and every
+console printout report the **billed**-token average (108.2% — the mean of 0.8%
+and 215.6%) under the same nominal label. `recordGateOutcome`
+(`packages/benchmarks/src/ledger.ts:88,97`) writes `agg.tokenOverheadPct`, which
+`gate/types.ts` documents as "Mean RAW token overhead", whereas the receipt and
+rationale render `scoredTokenOverheadPct(agg, policy)` — a labeling
+inconsistency in `rax eval gate`'s ledger writer, not a measurement error.
+Billed is the scored figure per the plan's Global Constraints
+(`tokenLeg: "billed"`), so read 108.2% as the verdict's cost leg.
+
 Ledger caveat: neither entry's `weakness`/`hypothesis` text is actually tested
 by the gate it is attached to, for the reasons in §6. Read those two entries
 only alongside this debrief.

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { toTraceEvent } from "../src/normalize.js";
 import type { AgentEvent } from "@reactive-agents/core";
-import type { EntropyScoredEvent } from "../src/events.js";
+import type { EntropyScoredEvent, DecisionEvaluatedEvent } from "../src/events.js";
 
 const base = { taskId: "run-1", timestamp: 1000 };
 
@@ -138,5 +138,33 @@ describe("toTraceEvent", () => {
     expect(ev.confidence).toBe("low");
     expect(ev.trajectoryShape).toBe("unknown");
     expect(ev.modelTier).toBe("unknown");
+  });
+
+  it("ReactiveDecision prefers an explicit confidence over the entropy-delta formula", () => {
+    const raw = {
+      _tag: "ReactiveDecision",
+      taskId: "run-switch",
+      iteration: 3,
+      decision: "switch-strategy",
+      confidence: 0.44,
+      reason: "Entropy flat for 3 iterations with high loop score (0.69)",
+      entropyBefore: 0.62,
+    } as unknown as AgentEvent;
+    const ev = toTraceEvent(raw, 0) as DecisionEvaluatedEvent;
+    expect(ev.confidence).toBeCloseTo(0.44, 5);
+  });
+
+  it("ReactiveDecision still derives confidence from entropy delta when none is given", () => {
+    const raw = {
+      _tag: "ReactiveDecision",
+      taskId: "run-delta",
+      iteration: 3,
+      decision: "compress",
+      entropyBefore: 0.8,
+      entropyAfter: 0.4,
+      reason: "compressed",
+    } as unknown as AgentEvent;
+    const ev = toTraceEvent(raw, 0) as DecisionEvaluatedEvent;
+    expect(ev.confidence).toBeCloseTo(0.5, 5);
   });
 });

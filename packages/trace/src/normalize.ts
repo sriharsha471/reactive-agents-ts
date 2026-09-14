@@ -130,7 +130,18 @@ export function toTraceEvent(raw: AgentEvent, seq: number): TraceEvent | null {
     }
 
     case "ReactiveDecision": {
-      const hasImprovement = typeof raw.entropyAfter === "number" && typeof raw.entropyBefore === "number" && raw.entropyAfter < raw.entropyBefore
+      const hasImprovement =
+        typeof raw.entropyAfter === "number" &&
+        typeof raw.entropyBefore === "number" &&
+        raw.entropyAfter < raw.entropyBefore
+      // An explicit controller-supplied confidence wins: switch-strategy decisions
+      // carry no entropyBefore/After pair, so the delta formula always fell to 0.
+      const confidence =
+        typeof raw.confidence === "number"
+          ? Math.max(0, Math.min(1, raw.confidence))
+          : hasImprovement
+            ? Math.max(0, 1 - (raw.entropyAfter as number) / (raw.entropyBefore as number))
+            : 0
       const ev: DecisionEvaluatedEvent = {
         kind: "decision-evaluated",
         runId: raw.taskId,
@@ -138,7 +149,7 @@ export function toTraceEvent(raw: AgentEvent, seq: number): TraceEvent | null {
         iter: raw.iteration,
         seq,
         decisionType: raw.decision,
-        confidence: hasImprovement ? Math.max(0, 1 - (raw.entropyAfter as number) / (raw.entropyBefore as number)) : 0,
+        confidence,
         reason: raw.reason,
       }
       return ev

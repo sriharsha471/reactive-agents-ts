@@ -299,6 +299,13 @@ export function runReactiveObserver(
               decision: (decision as Record<string, unknown>).decision,
               reason: (decision as Record<string, unknown>).reason,
               entropyBefore: latestScore?.composite ?? 0,
+              // Forward the controller-supplied confidence (e.g. switch-strategy's
+              // loop-score headroom) — without this, trace/normalize.ts's
+              // ReactiveDecision mapper never sees it and falls back to the
+              // entropyBefore/After delta formula (always 0 for switch-strategy).
+              ...((decision as Record<string, unknown>).confidence !== undefined
+                ? { confidence: (decision as Record<string, unknown>).confidence }
+                : {}),
             }).pipe(Effect.catchAll(() => Effect.void));
           }
         }

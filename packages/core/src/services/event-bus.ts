@@ -704,6 +704,10 @@ export type AgentEvent =
       readonly reason: string;
       readonly entropyBefore: number;
       readonly entropyAfter?: number;
+      /** Controller-supplied confidence (0-1), e.g. switch-strategy's loop-score
+       *  headroom. Preferred by trace/normalize.ts over the entropyBefore/After
+       *  delta formula, which switch-strategy decisions never carry. */
+      readonly confidence?: number;
     }
   // ─── Compression coordination (GH #119 + HS-128) ───
   // Curator-as-sole-prompt-author contract has advisors that RECOMMEND

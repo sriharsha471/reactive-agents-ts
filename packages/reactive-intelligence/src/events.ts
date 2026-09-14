@@ -56,4 +56,5 @@ export type ReactiveDecision = {
   readonly reason: string;
   readonly entropyBefore: number;
   readonly entropyAfter?: number;
+  readonly confidence?: number;
 };

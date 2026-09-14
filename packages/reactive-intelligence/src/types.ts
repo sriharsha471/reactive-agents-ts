@@ -209,7 +209,7 @@ export type ControllerDecision =
    */
   | { readonly decision: "compress"; readonly sections: readonly string[]; readonly estimatedSavings: number }
   /** ✅ ACTIVE — fires on stagnant strategy / repeated failure. */
-  | { readonly decision: "switch-strategy"; readonly from: string; readonly to: string; readonly reason: string }
+  | { readonly decision: "switch-strategy"; readonly from: string; readonly to: string; readonly reason: string; readonly confidence?: number }
   /**
    * @experimental 🟡 UNFIRED — handler registered (`tempAdjustHandler`).
    * Corpus expansion needed for entropy-driven temperature adjustment scenarios.

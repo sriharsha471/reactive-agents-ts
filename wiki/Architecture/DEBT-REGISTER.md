@@ -216,7 +216,7 @@ honest output text. n=3 ⇒ **MECHANISM confirmation (deterministic barrier remo
 New rows (open):
 | Item | Verdict | Note |
 |---|---|---|
-| `RunCompletedEvent` carries no `terminatedBy`/`abstention` | ORPHAN (projection gap) | Terminal reason observable only via the last `kernel-state-snapshot`; `analyzeRun` had to source it there. Any consumer reading the completion event alone cannot see an abstention. |
+| ~~`RunCompletedEvent` carries no `terminatedBy`/`abstention`~~ **RESOLVED (2026-09-14)** | ORPHAN (projection gap) | Terminal reason observable only via the last `kernel-state-snapshot`; `analyzeRun` had to source it there. Any consumer reading the completion event alone cannot see an abstention. **Fixed:** `AgentCompleted.totalCostUsd?` (core), `run-finalize.ts` forwards `result.metadata.cost`, `RunCompletedEvent.terminatedBy?` (trace), `normalize.ts` maps `terminationReason → terminatedBy` and `totalCostUsd` instead of hardcoding 0. `terminatedBy` proven end-to-end (`abstention-is-not-success.test.ts`); `totalCostUsd` proven at unit level only — the `test` provider always reports cost 0 (see B3), so the runtime→trace wiring for cost cannot be red-on-cut through the harness; `run-completed-truth.test.ts` proves the `normalize.ts` mapping directly. |
 | `honest-uncertainty` dimension needs a live judge | INERT without judge-server | Scores 0 and reports "Judge unreachable — score not measured"; a 0 here is NOT a measurement. Bench summary shows it as 0% regardless. |
 | `long-horizon-arm` `ablation: []` on single-task runs | — | `harnessLift` not computed, so no lift verdict is available from that shape; the arm's token delta is not a lift signal. |
 

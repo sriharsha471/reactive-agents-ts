@@ -73,6 +73,7 @@ export const finalizeRun = (
         durationMs: Date.now() - executionStartMs,
         ...(!executionSucceeded && result.error ? { error: result.error } : {}),
         ...(terminationReason ? { terminationReason } : {}),
+        ...(typeof result.metadata?.cost === "number" ? { totalCostUsd: result.metadata.cost } : {}),
         ...(rc?.rootRunId ? { rootRunId: rc.rootRunId } : {}),
         ...(rc?.parentRunId ? { parentRunId: rc.parentRunId } : {}),
         ...(typeof rc?.depth === "number" ? { depth: rc.depth } : {}),

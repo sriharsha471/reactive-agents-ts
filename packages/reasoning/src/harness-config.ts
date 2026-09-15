@@ -29,8 +29,6 @@ import {
   verboseRulesEnabled,
   recencyBudgetCharsOverride,
   toolResultBudgetCharsOverride,
-  thoughtContinuityEnabled,
-  toolObserveSymmetryEnabled,
   rationaleAuditEnabled,
   treeOfThoughtExploreBudgetMs,
   assemblyDebugEnabled,
@@ -53,10 +51,6 @@ export interface HarnessConfig {
   readonly recencyBudgetChars?: number;
   /** Per-tool-result preservation cap. Unset ⇒ the tier table decides. (`RA_TOOL_RESULT_BUDGET_CHARS`) */
   readonly toolResultBudgetChars?: number;
-  /** Carry thought continuity across projected results. Default OFF. (`RA_THOUGHT_CONTINUITY`) */
-  readonly thoughtContinuity?: boolean;
-  /** Symmetric observe formatting on tool results. Default OFF. (`RA_TOOL_OBSERVE_SYMMETRY`) */
-  readonly toolObserveSymmetry?: boolean;
   /** Emit a per-tool-call rationale block for audit. Default OFF — an AUDIT
    *  feature, measured as a pure speed/token tax. (`RA_RATIONALE_AUDIT`) */
   readonly auditRationale?: boolean;
@@ -78,8 +72,6 @@ export interface ResolvedHarness {
   readonly verboseRules: boolean;
   readonly recencyBudgetChars?: number;
   readonly toolResultBudgetChars?: number;
-  readonly thoughtContinuity: boolean;
-  readonly toolObserveSymmetry: boolean;
   readonly auditRationale: boolean;
   readonly treeOfThoughtExploreBudgetMs: number;
   readonly assemblyDebug: boolean;
@@ -152,8 +144,6 @@ export function resolveHarnessConfig(
     verboseRules: pick(config.verboseRules, verboseRulesFallback),
     ...(recencyBudgetChars !== undefined ? { recencyBudgetChars } : {}),
     ...(toolResultBudgetChars !== undefined ? { toolResultBudgetChars } : {}),
-    thoughtContinuity: pick(config.thoughtContinuity, thoughtContinuityEnabled()),
-    toolObserveSymmetry: pick(config.toolObserveSymmetry, toolObserveSymmetryEnabled()),
     auditRationale: pick(config.auditRationale, rationaleAuditEnabled()),
     treeOfThoughtExploreBudgetMs:
       config.treeOfThoughtExploreBudgetMs ?? treeOfThoughtExploreBudgetMs(),

@@ -57,7 +57,7 @@ agent.withHarness({
 })
 ```
 
-## The 14 fields
+## The 11 fields
 
 | Field | Type | Default | Env fallback |
 | --- | --- | --- | --- |
@@ -68,8 +68,6 @@ agent.withHarness({
 | `verboseRules` | `boolean` | `false` | `RA_VERBOSE_RULES` |
 | `recencyBudgetChars` | `number` (unset = derived from window) | unset | `RA_RECENCY_BUDGET_CHARS` |
 | `toolResultBudgetChars` | `number` (unset = tier table decides) | unset | `RA_TOOL_RESULT_BUDGET_CHARS` |
-| `thoughtContinuity` | `boolean` | `false` | `RA_THOUGHT_CONTINUITY` |
-| `toolObserveSymmetry` | `boolean` | `false` | `RA_TOOL_OBSERVE_SYMMETRY` |
 | `auditRationale` | `boolean` | `false` | `RA_RATIONALE_AUDIT` |
 | `treeOfThoughtExploreBudgetMs` | `number` | `120000` | `RA_TOT_EXPLORE_BUDGET_MS` |
 | `assemblyDebug` | `boolean` | `false` | `RA_ASSEMBLY_DEBUG` |
@@ -170,9 +168,6 @@ const agent = ReactiveAgents.create()
 - **No default changes.** With no `.withHarness()` call and no `RA_*`
   variables set, every mechanism resolves exactly as it did before this
   surface existed.
-- **`overhaulEnabled()` (`RA_OVERHAUL`) stays env-only.** It is a build-time
-  construction switch (`runtime-construction.ts`), not a per-run mechanism,
-  so it is deliberately outside `HarnessConfig`.
 - **`packages/tools/src/flags.ts` and `packages/a2a/src/flags.ts` are
   untouched.** They gate deployment/sandbox concerns in packages that cannot
   import `harness-flags.ts` without a dependency cycle — a different problem

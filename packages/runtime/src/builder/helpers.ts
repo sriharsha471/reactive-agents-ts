@@ -112,8 +112,8 @@ export function resolveGoalAchieved(
  *
  * - `META_TOOLS` (kernel-constants.ts, the single source of truth): harness
  *   inline tools — final-answer, task-complete, context-status, brief, pulse,
- *   find, recall, checkpoint, activate-skill, discover-tools,
- *   write_result_to_file. EVERY kernel run terminates via `final-answer`, so
+ *   find, recall, checkpoint, activate-skill, discover-tools. EVERY kernel
+ *   run terminates via `final-answer`, so
  *   counting it made verdict "ungrounded" unreachable on the kernel path and
  *   graded pure-knowledge answers "tool-grounded" — inverting the receipt's
  *   whole purpose.

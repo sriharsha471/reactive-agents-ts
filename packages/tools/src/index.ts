@@ -118,12 +118,8 @@ export {
 } from "./skills/file-operations.js";
 export { httpGetTool, httpGetHandler, type HttpGetConfig } from "./skills/http-client.js";
 export { grepTool, grepHandler } from "./skills/grep.js";
-// Overhaul — pure result renderer (shared by reasoning ContextManager + write-result-to-file).
+// Pure result renderer (shared by reasoning ContextManager consumers).
 export { renderValue, describeShape, asArray, type ResultFormat } from "./skills/render-result.js";
-export {
-  writeResultToFileTool,
-  makeWriteResultToFileHandler,
-} from "./skills/write-result-to-file.js";
 export {
   codeExecuteTool,
   codeExecuteHandler,

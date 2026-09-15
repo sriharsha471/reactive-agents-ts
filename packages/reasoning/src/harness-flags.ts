@@ -81,6 +81,9 @@ export function toolDiscoveryEnabled(defaultValue = true): boolean {
  * Default OFF pending an ablation-warden cross-tier measurement — see
  * wiki/Planning/Implementation-Plans/2026-08-19-lightweight-tool-index-progressive-disclosure.md.
  * `RA_TOOL_INDEX=1` to enable for probing.
+ *
+ * See wiki/Decisions/2026-09-15-experimental-flag-verdicts.md — KEEP-OPT-IN
+ * (insufficient measurement power / non-accuracy audit purpose), 2026-09-15.
  */
 export function toolIndexEnabled(defaultValue = false): boolean {
   const v = readFlag("RA_TOOL_INDEX");
@@ -145,36 +148,6 @@ export function toolResultBudgetCharsOverride(): number | undefined {
 }
 
 /**
- * Thought continuity — render the prior turn's recorded thought as the
- * replayed assistant content, instead of `content: ""`.
- *
- * Default OFF. `RA_THOUGHT_CONTINUITY=1` turns it on. Experimental, pending
- * ablation (rung1 sweep 2026-07-28: INERT on the current golden corpus — see
- * `wiki/Research/Harness-Reports/2026-07-28-rung1-flag-inertness.md`).
- *
- * Was read directly at `assembly/stages/project-results.ts:67`.
- */
-export function thoughtContinuityEnabled(): boolean {
-  return readFlag("RA_THOUGHT_CONTINUITY") === "1";
-}
-
-/**
- * Single/batch tool-observation symmetry (Phase E2).
- *
- * Default OFF: the single-tool-call path stays byte-identical (no
- * verification, no semantic-memory write). `RA_TOOL_OBSERVE_SYMMETRY=1` makes
- * the single path also attach a VerificationResult and fork the daemon
- * semantic-memory store, matching the batch path. HOT-PATH behavior change,
- * gated so it can be benched live before any default-on decision (rung1
- * sweep 2026-07-28: INERT on the current golden corpus).
- *
- * Was read directly at `kernel/capabilities/act/act.ts:166`.
- */
-export function toolObserveSymmetryEnabled(): boolean {
-  return readFlag("RA_TOOL_OBSERVE_SYMMETRY") === "1";
-}
-
-/**
  * Rationale-audit gate — MANDATORY per-tool-call rationale blocks.
  *
  * Default OFF: the rationale block is decode-tax-only (audit, not quality).
@@ -186,6 +159,9 @@ export function toolObserveSymmetryEnabled(): boolean {
  * and `strategies/plan-execute.ts:370` — the exact multi-site-same-flag shape
  * this audit exists to close off, even though (unlike `RA_LAZY_TOOLS`) both
  * sites already agreed on direction.
+ *
+ * See wiki/Decisions/2026-09-15-experimental-flag-verdicts.md — KEEP-OPT-IN
+ * (insufficient measurement power / non-accuracy audit purpose), 2026-09-15.
  */
 export function rationaleAuditEnabled(): boolean {
   return readFlag("RA_RATIONALE_AUDIT") === "1";
@@ -227,24 +203,4 @@ export function assemblyDebugEnabled(): boolean {
  */
 export function promptDumpPathPrefix(): string | undefined {
   return readFlag("RA_PROMPT_DUMP");
-}
-
-/**
- * Overhaul A/B: register the `write_result_to_file` meta-tool so the model
- * can materialize a deliverable by reference instead of transcribing /
- * copying the `[STORED:]` marker.
- *
- * Default OFF. `RA_OVERHAUL=1` turns it on (branch overhaul/agentic-core).
- * Rung1 sweep 2026-07-28: INERT on the current golden corpus.
- *
- * Was read directly at
- * `packages/runtime/src/builder/build-effect/runtime-construction.ts:339` —
- * the one mechanism in this file that lives in `packages/runtime` rather than
- * `packages/reasoning`. `packages/runtime` depends on `packages/reasoning`
- * (never the reverse), so routing through this registry and re-exporting from
- * `packages/reasoning/src/index.ts` is architecturally sound; the reverse
- * would not be.
- */
-export function overhaulEnabled(): boolean {
-  return readFlag("RA_OVERHAUL") === "1";
 }

@@ -133,6 +133,15 @@ export interface KernelMeta {
    */
   readonly horizonProfile?: "long";
 
+  /**
+   * D-2026-07-30-I: run-scoped high-water mark for demand-driven Ollama
+   * `num_ctx` (opt-in via HarnessConfig.numCtxPolicy = "demand"). Ollama
+   * reloads the model whenever `num_ctx` changes between requests, so
+   * `nextNumCtx` (assembly/capability.ts) only ever grows this value within a
+   * run — never present/read when the policy is unset ("fixed", the default).
+   */
+  readonly numCtxHighWater?: number;
+
   // ── HS-115 / Audit G-E — tool nomination (anti-scaffold F4 closure) ──
   /**
    * Tools the comprehend phase nominated as plausibly required from the task

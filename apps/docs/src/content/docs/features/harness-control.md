@@ -57,7 +57,7 @@ agent.withHarness({
 })
 ```
 
-## The 11 fields
+## The 12 fields
 
 | Field | Type | Default | Env fallback |
 | --- | --- | --- | --- |
@@ -72,6 +72,15 @@ agent.withHarness({
 | `treeOfThoughtExploreBudgetMs` | `number` | `120000` | `RA_TOT_EXPLORE_BUDGET_MS` |
 | `assemblyDebug` | `boolean` | `false` | `RA_ASSEMBLY_DEBUG` |
 | `promptDumpPathPrefix` | `string` (unset = disabled) | unset | `RA_PROMPT_DUMP` |
+| `numCtxPolicy` | `"fixed" \| "demand"` | `"fixed"` | none — config-only, no `RA_*` flag |
+
+`numCtxPolicy: "demand"` opts a run in to sizing Ollama's `num_ctx` to the
+assembled prompt each turn instead of a fixed per-model value (D-2026-07-30-I).
+It only affects requests where `providerName === "ollama"` and only ever
+GROWS within a run — Ollama reloads the model on any `num_ctx` change, so the
+policy tracks a run-scoped high-water mark rather than shrinking back down.
+Ships opt-in pending cross-model measurement; see
+`wiki/Research/Harness-Reports/2026-09-15-num-ctx-demand.md`.
 
 Fields whose "unset" state is meaningful (`toolIndexMaxEntries`,
 `recencyBudgetChars`, `toolResultBudgetChars`, `promptDumpPathPrefix`) are

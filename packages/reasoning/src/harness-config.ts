@@ -60,6 +60,18 @@ export interface HarnessConfig {
   readonly assemblyDebug?: boolean;
   /** Write each rendered prompt to `<prefix>-<n>.txt`. Debug only. (`RA_PROMPT_DUMP`) */
   readonly promptDumpPathPrefix?: string;
+  /**
+   * Ollama `num_ctx` allocation policy. Default `"fixed"` (today's behavior:
+   * `capability.recommendedNumCtx`/`config.defaultNumCtx`, unchanged per-model
+   * value). `"demand"` opts in to sizing `num_ctx` to the assembled prompt each
+   * turn (D-2026-07-30-I `nextNumCtx`), monotone-growing within a run — Ollama
+   * reloads the model whenever `num_ctx` changes, so it never shrinks. No env
+   * flag: this is a config-only surface (avoids another `RA_*`), gated on
+   * `providerName === "ollama"` at the wiring site (think.ts) since it has no
+   * effect on any other provider. Ships opt-in pending cross-model measurement
+   * (see wiki/Research/Harness-Reports/2026-09-15-num-ctx-demand.md).
+   */
+  readonly numCtxPolicy?: "fixed" | "demand";
 }
 
 /** Internal shape: booleans and always-defaulted numbers are present; genuinely
@@ -76,6 +88,7 @@ export interface ResolvedHarness {
   readonly treeOfThoughtExploreBudgetMs: number;
   readonly assemblyDebug: boolean;
   readonly promptDumpPathPrefix?: string;
+  readonly numCtxPolicy: "fixed" | "demand";
 }
 
 /** `config ?? env ?? default`, for a field whose env layer already folds in its default. */
@@ -149,6 +162,7 @@ export function resolveHarnessConfig(
       config.treeOfThoughtExploreBudgetMs ?? treeOfThoughtExploreBudgetMs(),
     assemblyDebug: pick(config.assemblyDebug, assemblyDebugEnabled()),
     ...(promptDump !== undefined ? { promptDumpPathPrefix: promptDump } : {}),
+    numCtxPolicy: config.numCtxPolicy ?? "fixed",
   });
 }
 

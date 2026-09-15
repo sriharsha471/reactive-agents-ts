@@ -595,6 +595,30 @@ cross-tier ablation, not a silent flip.
 **Discharge:** owner-gated; wire `predictNumCtx` → `resolveOllamaNumCtx` with a
 before/after VRAM+latency measurement, or delete the dead machinery.
 
+**Status (2026-09-15): WIRED, opt-in, NOT promoted.** `nextNumCtx` (still in
+`assembly/capability.ts`) is now reachable via `HarnessConfig.numCtxPolicy:
+"demand"` (default `"fixed"`, byte-identical to before), wired in
+`think.ts` gated on `providerName === "ollama"` (NOT `tier === "local"` —
+verified that tier is also the generic capability fallback for ANY
+unrecognized provider, so it isn't a reliable Ollama proxy) and monotone
+within a run via `state.meta.numCtxHighWater`. 2-model × 2-arm × 2-task × n=3
+measurement (`wiki/Research/Harness-Reports/2026-09-15-num-ctx-demand.md`):
+no accuracy regression (24/24 correct both arms); no measurable VRAM win on
+this hardware (`nvidia-smi` unavailable — driver/library mismatch; `ollama
+ps` SIZE column showed no material change at 8192 vs 32768 num_ctx); steady
+-state per-request latency roughly comparable to `fixed` on both models.
+Aggregate wall-clock across the harness's mixed-task-size sequence was worse
+under `demand` on both models, but that's dominated by a test-harness
+confound (separate short-lived `agent.run()` calls cycling arms/tasks against
+one persistent Ollama process — a cross-run num_ctx reset, not genuine
+in-run growth) rather than the monotone-within-a-run design itself; the
+26B/CPU-GPU-split model's reload cost when `num_ctx` DOES change was severe
+(~33–49s), confirming the brief's "Main risk" concretely. Per the brief's
+acceptance rule (promote only if VRAM/latency measurably better on ≥1 model
+with no regression elsewhere; delete only if slower on both with no
+compensating benefit) — this measurement is too small and too confounded
+for either bar. **Keeps opt-in, documented, not promoted, not deleted.**
+
 ### D-2026-07-30-J — out-of-repo probe scripts resolve the published `~/.bun` cache, not workspace src
 
 **Class:** methodology hazard (reinforces the standing bun-cache trap).

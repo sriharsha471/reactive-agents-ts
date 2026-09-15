@@ -217,11 +217,11 @@ overlapped the first while its model request was still completing.
 kernel parallel batch bypasses it and calls `executeNativeToolCall()` directly
 (`act.ts:621-703`) — the code comment says so.
 
-**6.5 Evidence semantics differ by caller.** `terminal-gate.ts:26-35` documents it: the
+**6.5 Evidence semantics differ by caller. RESOLVED 2026-08-18** — callers derive coveredTools from ledger-backed deriveRequirementEvidence (terminal-gate.ts header, divergence (b)); verified 2026-09-14. `terminal-gate.ts:26-35` documents it: the
 kernel counts a required tool covered when **attempted**, plan-execute when **completed**.
 `final-answer` is exempt from grounding and coverage entirely (`:241-246`).
 
-**6.6 Two path-confinement authorities.** `healing/path-resolver.ts:43-55` silently remaps
+**6.6 Two path-confinement authorities. RESOLVED** — path-resolver.ts no longer remaps out-of-root paths; file-operations.ts throw is the sole authority; verified 2026-09-14. `healing/path-resolver.ts:43-55` silently remaps
 an out-of-root absolute path to a working-dir basename; `skills/file-operations.ts:371-386`
 independently **throws** on traversal, against a different root (`getFileRoot()`). Symptom
 F9: `file-write` and `file-read` both succeed, terminal verification checks the original
@@ -260,8 +260,7 @@ API key to console on every build. `cost-track.ts:20-48` hardcodes `tier:"sonnet
 **API-key-prefix leak: RESOLVED (verified 2026-08-24).**
 `packages/runtime/src/build-validation.ts:353-363` now emits `(set)` / `(missing)` /
 `(not required)` / `(set via .withProvider config)` — no key material reaches the log. See
-[[../../Decisions/2026-08-24-external-research-convergence-amendment]] §2 F-5. The
-`cost-track.ts` and `calibration.ts` stubs are unaffected by this closure and remain open.
+[[../../Decisions/2026-08-24-external-research-convergence-amendment]] §2 F-5. `cost-track.ts` is RESOLVED (classifies tier via `classifyTier(model)`, reads `metadata.inputTokens`; verified 2026-09-14). `calibration.ts` returns an empty adapter overlay **by design** (see its JSDoc — every intent is delivered through a live non-adapter channel); not a stub.
 
 ## 7. The ordered path
 
@@ -285,7 +284,7 @@ W1. Full workstream table (W1–W7):
 **Step 0 — forced fixes.** No lift gate needed; each is deterministic or a pure removal.
 Remove the API-key prefix (6.11). Validate trace JSON at load (6.9). Delete `discover-tools`
 (§5.2). Add no-progress termination for repeated no-evidence discovery/meta-tool loops (F8).
-Fix `cost-track` tier/input tokens (6.11).
+~~Fix `cost-track` tier/input tokens (6.11)~~ done (verified 2026-09-14).
 
 **Step 1 — one loop.** Finish Move 1: land P2 (gate meta-tool schemas on actual need — the
 measured +73–100%/call wire tax), then merge Step 1 and delete the inline arm (6.1).

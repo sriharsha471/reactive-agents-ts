@@ -88,9 +88,12 @@ K makes agents capable. P makes them governable. T keeps both honest.
 | Lift measurements attempted / passed | **8 / 0** | ibid. + §5.2 |
 | Default path meta-loop reachability | **7 event kinds**; `.withReasoning()` = 12; control plane needs `.withLongHorizon()` | `meta-loop-reachability.test.ts` |
 | `_enableReasoning` default | `false` (`builder.ts:361`) — gates reasoning EXTRAS only; the kernel arm is the sole agent loop for every builder since Move 1 merged (`be71c87b`, 2026-08-13) | superseded 2026-08-13, re-verified 2026-09-03 (`runtime.ts:761-767`) |
-| Public builder withers | **83** | verified 2026-08-12 |
+| Public builder withers | **85** (was 83 at 2026-08-12; grew before this wave, unrelated to it) | verified 2026-09-15, `wither-census.test.ts` |
+| Wither proof census | **48 PROVEN / 32 UNOBSERVABLE-DETERMINISTIC / 5 INFRA** of 85 total | `packages/runtime/tests/wither-census.test.ts`, Task 8, 2026-09-15 — batch 1 (behavioral seam tests) shipped; batches 2-4 queued as backlog |
 | Strategy implementations | 8 files, **7,628 LOC** | verified 2026-08-12 |
 | `LLMRequestCompleted` producers | 1 (was 0) | `scripts/check-cost-accounting.sh` |
+| Ledger declared-orphan baseline | **`()` empty** (was `("handoff")`) | `scripts/check-orphans.sh`, wire-or-delete wave Task 5, 2026-09-15 — strategy-switch handoff now writes a real ledger fact; also fixed a real dropped-ledger bug found along the way (prior strategy's ledger was silently discarded on switch) |
+| Experimental harness flags | **3 deleted** (`RA_OVERHAUL`, `RA_THOUGHT_CONTINUITY`, `RA_TOOL_OBSERVE_SYMMETRY` — all measured inert/no-lift), **2 kept opt-in** (`RA_TOOL_INDEX`, `RA_RATIONALE_AUDIT` — insufficient measurement power / non-accuracy purpose) | `wiki/Decisions/2026-09-15-experimental-flag-verdicts.md`, wire-or-delete wave Task 6/6b |
 
 The +141% figure replaces an earlier 555–640%, which was computed with a broken
 instrument (Anthropic `usage.input_tokens` counts only the uncached remainder; fixed
@@ -250,7 +253,7 @@ it is not a full per-kind schema check." The instrument still admits any payload
 
 **6.10 Configuration has seven representations.** Builder private fields → `BuilderState`
 → `BuilderRuntimeStateView` → `RuntimeOptions` → `ReactiveAgentsConfig` → `AgentConfig`
-schema → hand-written serializer. 83 withers on the public surface. Full and light runtimes
+schema → hand-written serializer. 85 withers on the public surface (§4). Full and light runtimes
 use separate layer graphs. *Real debt, but DX debt — see §7's ordering.*
 
 **6.11 Leaks and stubs.** `build-validation.ts:338-347` prints the first 8 characters of the
@@ -343,7 +346,7 @@ this is measured. Do not build it speculatively; log it as an open alternate hyp
 whoever designs the allocator, gated by the same §2 lift rule as any other mechanism.
 
 **Step 6 — config and memory convergence.** One spec compiled once; one consolidator (6.8);
-retire builder-state mirrors (6.10). **Last, deliberately** — 83 withers is real debt with
+retire builder-state mirrors (6.10). **Last, deliberately** — 85 withers is real debt with
 no measurable performance leg, and doing it early would re-plumb every boundary above.
 
 Then, and only then: Arc 2 (boundary + gate), Arc 3 (teams, gated by C5), Arc 4 + Phase 7 (C6).

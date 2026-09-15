@@ -17,6 +17,12 @@
 //
 // ── Watch the right channel, or you will call a live mechanism dead
 //
+// (Historical note: both flags named below were later measured by the
+// 2026-09-15 ablation and deleted — see
+// wiki/Decisions/2026-09-15-experimental-flag-verdicts.md. This section
+// documents a past debugging lesson about trace-channel blindness, not a
+// currently-live mechanism.)
+//
 // Building this, a census that looked only at trace event KINDS reported two of
 // these flags inert. Both were live:
 //

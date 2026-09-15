@@ -754,7 +754,7 @@ export function analyzeWire(
   const flags: string[] = [];
   if (assistantTurns >= 2 && assistantProseChars === 0) {
     flags.push(
-      "assistant turns carry NO prose — the model never re-reads its own reasoning (thought continuity OFF; RA_THOUGHT_CONTINUITY=1 to trial)",
+      "assistant turns carry NO prose — the model never re-reads its own reasoning (thought continuity is permanently OFF; the RA_THOUGHT_CONTINUITY trial mechanism was measured INERT and removed 2026-09-15, see wiki/Decisions/2026-09-15-experimental-flag-verdicts.md)",
     );
   }
   const avg = schemaTotal / exchanges.length;

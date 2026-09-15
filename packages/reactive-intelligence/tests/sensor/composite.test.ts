@@ -116,5 +116,23 @@ describe("composite entropy scorer", () => {
       const second = computeCompositeEntropy(input);
       expect(second.composite).toBe(first.composite);
     });
+
+    test("uses the same task-category weights before and after the short-run boundary", () => {
+      const input = {
+        token: null,
+        structural: 0.86,
+        semantic: null as number | null,
+        behavioral: 0.5,
+        contextPressure: 0,
+        logprobsAvailable: false,
+        maxIterations: 10,
+        taskCategory: "quick-lookup",
+      };
+      const early = computeCompositeEntropy({ ...input, iteration: 1 });
+      const normal = computeCompositeEntropy({ ...input, iteration: 3 });
+
+      expect(early.composite).toBeCloseTo(normal.composite, 10);
+      expect(early.confidence).toBe("low");
+    });
   });
 });

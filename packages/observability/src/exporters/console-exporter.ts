@@ -103,6 +103,73 @@ export interface DashboardData {
   }[];
 }
 
+/** Recompute a trajectory from the composites shown in the dashboard. */
+export function classifyDashboardTrajectory(history: readonly number[]): string {
+  if (history.length < 3) return "flat";
+  const diffs = history.slice(1).map((value, index) => value - history[index]!);
+  let signChanges = 0;
+  for (let i = 1; i < diffs.length; i++) {
+    if (
+      diffs[i]! * diffs[i - 1]! < 0 &&
+      Math.abs(diffs[i]!) > 0.05 &&
+      Math.abs(diffs[i - 1]!) > 0.05
+    ) signChanges++;
+  }
+  if (signChanges >= Math.floor(diffs.length * 0.6) && diffs.length >= 3) return "oscillating";
+
+  const min = Math.min(...history);
+  const minIndex = history.indexOf(min);
+  if (minIndex > 0 && minIndex < history.length - 1) {
+    if (history[0]! - min > 0.15 && history[history.length - 1]! - min > 0.15) {
+      return "v-recovery";
+    }
+  }
+
+  const recent = history.slice(-3);
+  const slope = (recent[recent.length - 1]! - recent[0]!) / (recent.length - 1);
+  if (slope < -0.05) return "converging";
+  if (slope > 0.05) return "diverging";
+  return "flat";
+}
+
+function recomputeEntropyTrace(trace: readonly DashboardEntropyPoint[]): readonly DashboardEntropyPoint[] {
+  const composites = trace.map((point) => point.composite);
+  return trace.map((point, index) => ({
+    ...point,
+    trajectory: {
+      ...point.trajectory,
+      shape: classifyDashboardTrajectory(composites.slice(0, index + 1)),
+    },
+  }));
+}
+
+/** Grade the observed signal, capping degraded low-confidence evidence at C. */
+export function gradeDashboardEntropy(
+  trace: readonly DashboardEntropyPoint[],
+  status: DashboardData["status"],
+): string {
+  if (trace.length === 0) return "unknown";
+  const mean = trace.reduce((sum, point) => sum + point.composite, 0) / trace.length;
+  const lastShape = trace[trace.length - 1]!.trajectory.shape;
+  const singleIteration = trace.length <= 1;
+  const lowConfidence = trace.length > 1 && trace.every((point) => point.confidence === "low");
+
+  const grade = singleIteration && status === "success" && mean < 0.5 ? "A"
+    : singleIteration && status === "success" && mean < 0.7 ? "B"
+    : singleIteration && status === "success" ? "B"
+    : lastShape === "converging" && mean < 0.35 ? "A"
+    : lastShape === "converging" && mean < 0.55 ? "B"
+    : lastShape === "flat" && mean < 0.45 ? "B"
+    : lastShape === "flat" && mean < 0.65 ? "C"
+    : lastShape === "diverging" ? "D"
+    : lastShape === "oscillating" ? "C"
+    : mean > 0.7 ? "F"
+    : "C";
+
+  if (!lowConfidence || grade === "A" || grade === "B" || grade === "C") return grade;
+  return "C";
+}
+
 // ─── Console Exporter ───
 
 export interface ConsoleExporterOptions {
@@ -219,14 +286,23 @@ const generateAlerts = (
     const last = entropyTrace[entropyTrace.length - 1];
     const mean = entropyTrace.reduce((s, p) => s + p.composite, 0) / entropyTrace.length;
 
-    if (last.trajectory.shape === "diverging") {
+    const lowConfidence = entropyTrace.length > 1 && entropyTrace.every((point) => point.confidence === "low");
+
+    if (last.trajectory.shape === "diverging" && !lowConfidence) {
       alerts.push({
         level: "warning",
         message: "Entropy diverging — model became less certain over iterations",
       });
     }
 
-    if (last.trajectory.shape === "flat" && entropyTrace.length >= 3 && mean > 0.5) {
+    if (lowConfidence) {
+      alerts.push({
+        level: "info",
+        message: "Entropy signal degraded — only partial sources were available",
+      });
+    }
+
+    if (!lowConfidence && last.trajectory.shape === "flat" && entropyTrace.length >= 3 && mean > 0.5) {
       alerts.push({
         level: "warning",
         message: "Entropy flat with high uncertainty — model may be stuck in a reasoning loop",
@@ -480,9 +556,10 @@ export const buildDashboardData = (
       }
     }
   }
-  const entropyTrace = entropyTraceOverride ?? (entropyPoints.size > 0
+  const rawEntropyTrace = entropyTraceOverride ?? (entropyPoints.size > 0
     ? [...entropyPoints.values()].sort((a, b) => a.iteration - b.iteration)
     : undefined);
+  const entropyTrace = rawEntropyTrace ? recomputeEntropyTrace(rawEntropyTrace) : undefined;
 
   const estimatedCost = calculateCost(tokenCount);
   const alerts = generateAlerts(phases, tools, stepCount, entropyTrace);
@@ -791,22 +868,10 @@ export const formatMetricsDashboard = (
     const diverging = last.trajectory.shape === "diverging";
     const oscillating = last.trajectory.shape === "oscillating";
 
-    // Overall grade: A/B/C/D/F based on convergence + mean entropy
-    // Single-iteration tasks get graded on efficiency, not trajectory
-    const singleIteration = trace.length <= 1;
     const taskSucceeded = data.status === "success";
-
-    const grade = singleIteration && taskSucceeded && meanComposite < 0.5 ? "A"
-      : singleIteration && taskSucceeded && meanComposite < 0.7 ? "B"
-      : singleIteration && taskSucceeded ? "B"
-      : converged && meanComposite < 0.35 ? "A"
-      : converged && meanComposite < 0.55 ? "B"
-      : flat && meanComposite < 0.45 ? "B"
-      : flat && meanComposite < 0.65 ? "C"
-      : diverging ? "D"
-      : oscillating ? "C"
-      : meanComposite > 0.7 ? "F"
-      : "C";
+    const singleIteration = trace.length <= 1;
+    const lowConfidence = trace.length > 1 && trace.every((point) => point.confidence === "low");
+    const grade = gradeDashboardEntropy(trace, data.status);
 
     const gradeColor = grade === "A" ? C_GREEN : grade === "B" ? C_GREEN : grade === "C" ? C_YELLOW : C_RED;
     const gradeLabel = chalk.hex(gradeColor).bold(grade);
@@ -830,6 +895,9 @@ export const formatMetricsDashboard = (
       : null;
 
     lines.push(`├─ Grade: ${gradeLabel}   Signal: ${signalLabel}   Mean: ${meanComposite.toFixed(3)}   Delta: ${deltaStr}`);
+    if (lowConfidence) {
+      lines.push(`├─ ${chalk.hex(C_DIM)("Signal confidence: low — partial entropy sources; grade is capped at C")}`);
+    }
 
     // Actionable summary line
     const summaryParts: string[] = [];
@@ -838,6 +906,8 @@ export const formatMetricsDashboard = (
     } else if (converged) {
       if (meanComposite < 0.35) summaryParts.push("Model solved this efficiently");
       else summaryParts.push("Model converged but with moderate uncertainty");
+    } else if (flat && lowConfidence) {
+      summaryParts.push("Task outcome is available, but the entropy signal is too partial to judge reasoning quality");
     } else if (flat) {
       summaryParts.push("Model stalled — entropy didn't decrease across iterations");
     } else if (diverging) {
@@ -903,15 +973,15 @@ export const formatMetricsDashboard = (
 
     // Actionable recommendations based on signal
     const recommendations: string[] = [];
-    if (diverging) {
+    if (diverging && !lowConfidence) {
       recommendations.push("Try a simpler prompt or break the task into sub-tasks");
       if (avgSources.behavioral > 0.5) recommendations.push("Reduce available tools to only what's needed");
     }
-    if (flat && data.stepCount > 3) {
+    if (flat && !lowConfidence && data.stepCount > 3) {
       recommendations.push("Consider enabling strategy switching (.withReasoning({ enableStrategySwitching: true }))");
       if (avgSources.structural > 0.6) recommendations.push("Add more structure to the prompt (examples, step-by-step format)");
     }
-    if (oscillating) {
+    if (oscillating && !lowConfidence) {
       recommendations.push("Model is uncertain — try a higher-capability model or more specific instructions");
     }
     if (meanComposite > 0.6 && converged) {

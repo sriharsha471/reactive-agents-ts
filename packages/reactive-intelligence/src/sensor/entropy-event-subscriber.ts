@@ -17,6 +17,7 @@ import { Effect } from "effect";
 import {
   EventBus,
   EntropySensorService,
+  scoresEntropyInline,
   type KernelStateLike,
 } from "@reactive-agents/core";
 
@@ -53,6 +54,13 @@ export function subscribeEntropyScoring(config: {
       Effect.gen(function* () {
         // Only score events that carry a thought
         if (!event.thought) return;
+
+        // Kernel-runner strategies already score inline via runReactiveObserver.
+        // This collector covers the strategies with no kernel scoring
+        // (blueprint, code-action, adaptive) — scoring a kernel strategy
+        // again would share the sensor trajectory under a different step
+        // index and corrupt trajectory shape and calibration samples.
+        if (scoresEntropyInline(event.strategy)) return;
 
         const dedupKey = `${event.taskId}:${event.step}`;
         if (scored.has(dedupKey)) return;

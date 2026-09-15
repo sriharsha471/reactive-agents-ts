@@ -57,6 +57,18 @@ export const INTROSPECTION_META_TOOLS = new Set([
   "checkpoint",
 ]) as ReadonlySet<string>;
 
+/**
+ * Strategies whose thoughts are scored by the kernel observer.
+ *
+ * Defined in @reactive-agents/core (entropy-sensor-tag.ts) so the runtime
+ * engine and reactive-intelligence can consult the same set without a
+ * dependency cycle; re-exported here for kernel-adjacent consumers.
+ */
+export {
+  KERNEL_INLINE_ENTROPY_STRATEGIES,
+  scoresEntropyInline,
+} from "@reactive-agents/core";
+
 /** Returns true when the tool is a delegation adapter (spawn-agent, agent-*). */
 export function isDelegationTool(toolName: string): boolean {
   return toolName === "spawn-agent" || toolName.startsWith("agent-");

@@ -68,7 +68,7 @@ export const createReactiveIntelligenceLayer = (
   // deliberately NOT wired here. Its in-memory `(taskId, iteration)` dedup
   // set only guards against re-scoring within itself — it has no visibility
   // into the `EntropyScored` events kernel-runner strategies (direct,
-  // reactive, reflexion, tree-of-thought, plan-execute) already publish
+  // reactive, reflexion, tree-of-thought, plan-execute-reflect) already publish
   // inline via `reactive-observer.ts`'s `runReactiveObserver` whenever
   // `EntropySensorService` is present. Since it subscribes to the generic
   // `ReasoningStepCompleted` event that ALL strategies emit (including
@@ -76,11 +76,9 @@ export const createReactiveIntelligenceLayer = (
   // unconditionally would double-score and double-publish `EntropyScored`
   // for every kernel-runner-strategy step, corrupting calibration with
   // duplicate samples. It remains genuinely useful for the strategies that
-  // have NO entropy coverage today (blueprint, code-action, adaptive), but
-  // wiring it safely needs the dedup to consult already-published
-  // `EntropyScored` events (or kernel-runner strategies to skip publishing
-  // `ReasoningStepCompleted.thought` when already scored inline) — out of
-  // scope for this fix.
+  // have NO entropy coverage today (blueprint, code-action, adaptive), and
+  // now skips kernel-scored strategies via `scoresEntropyInline`, so it is
+  // safe to wire for those uncovered strategies.
   const calibrationSubscriberLayer = Layer.scopedDiscard(subscribeCalibrationUpdates()).pipe(
     Layer.provide(entropyLayer),
   );

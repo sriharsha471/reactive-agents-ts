@@ -14,9 +14,9 @@ describe("validation dataset accuracy", () => {
 
   /**
    * High-signal examples: well-structured reasoning with tool progress.
-   * Without logprobs/embeddings, composite is driven by structural quality
-   * (high for good format) and behavioral disorder (low when tools succeed).
-   * With good behavioral steps, composite lands in ~0.50–0.60 range.
+   * All entropy sources use disorder orientation (higher = more uncertain),
+   * so confident, well-structured runs land near zero. Measured post-fix
+   * distribution: 0.000–0.066 across 22 examples.
    */
   test("classification accuracy >= 80% on high-signal examples", async () => {
     const highSignal = VALIDATION_DATASET.filter((e) => e.category === "high-signal");
@@ -31,7 +31,7 @@ describe("validation dataset accuracy", () => {
         return yield* sensor.score(example.input);
       });
       const score = await Effect.runPromise(program.pipe(Effect.provide(layer)));
-      if (score.composite < 0.60) {
+      if (score.composite < 0.15) {
         correct++;
       } else {
         failures.push(`  FAIL: "${example.label}" composite=${score.composite.toFixed(3)}`);
@@ -48,8 +48,9 @@ describe("validation dataset accuracy", () => {
 
   /**
    * Low-signal examples: malformed, repetitive, stalled, or drifting.
-   * Loop steps (repeated failures) push behavioral disorder high (~0.9),
-   * and poor format gives moderate structural. Composite lands > 0.65.
+   * Disorder-oriented sources push these up. Measured post-fix
+   * distribution: 0.344–0.580 across 23 examples, cleanly above the
+   * ambiguous band (max 0.279).
    */
   test("classification accuracy >= 80% on low-signal examples", async () => {
     const lowSignal = VALIDATION_DATASET.filter((e) => e.category === "low-signal");
@@ -64,7 +65,7 @@ describe("validation dataset accuracy", () => {
         return yield* sensor.score(example.input);
       });
       const score = await Effect.runPromise(program.pipe(Effect.provide(layer)));
-      if (score.composite > 0.65) {
+      if (score.composite > 0.30) {
         correct++;
       } else {
         failures.push(`  FAIL: "${example.label}" composite=${score.composite.toFixed(3)}`);
@@ -81,8 +82,8 @@ describe("validation dataset accuracy", () => {
 
   /**
    * Ambiguous examples: short but valid, exploratory, jargon-heavy.
-   * These should fall in the broad middle range (0.35–0.85) since
-   * they have moderate structural quality and mixed behavioral signals.
+   * Measured post-fix distribution: 0.218–0.279 — between high-signal
+   * (max 0.066) and low-signal (min 0.344).
    */
   test("ambiguous examples fall in middle range", async () => {
     const ambiguous = VALIDATION_DATASET.filter((e) => e.category === "ambiguous");
@@ -97,7 +98,7 @@ describe("validation dataset accuracy", () => {
         return yield* sensor.score(example.input);
       });
       const score = await Effect.runPromise(program.pipe(Effect.provide(layer)));
-      if (score.composite >= 0.35 && score.composite <= 0.85) {
+      if (score.composite >= 0.15 && score.composite <= 0.32) {
         inRange++;
       } else {
         failures.push(`  FAIL: "${example.label}" composite=${score.composite.toFixed(3)}`);

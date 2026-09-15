@@ -1,6 +1,7 @@
 import type { AssemblyCtx } from "../assembly-ctx.js";
 import { pushStage, recordMessage } from "../trace.js";
 import { resolveHarnessConfig } from "../../harness-config.js";
+import { offersWriteByRef } from "../result-store.js";
 
 /**
  * Build the provider-valid conversation thread and project each tool result.
@@ -24,6 +25,7 @@ import { resolveHarnessConfig } from "../../harness-config.js";
  */
 export const projectResultsStage = (c: AssemblyCtx): AssemblyCtx => {
   const h = c.harness ?? resolveHarnessConfig();
+  const writeByRef = offersWriteByRef(c.tools.schemas);
   let messages = [...c.messages];
   let trace = c.trace;
   let full = 0;
@@ -166,7 +168,7 @@ export const projectResultsStage = (c: AssemblyCtx): AssemblyCtx => {
         projection = "full";
         full++;
       } else {
-        content = c.store.preview(e.ref, budget);
+        content = c.store.preview(e.ref, budget, { writeByRef });
         projection = "preview+ref";
         summarized++;
       }

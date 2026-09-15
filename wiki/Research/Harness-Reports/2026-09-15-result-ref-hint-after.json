@@ -1,0 +1,230 @@
+{
+  "generatedAt": "2026-09-15T13:16:22.309Z",
+  "runs": [],
+  "sessionId": "real-world-full",
+  "sessionVersion": "1.0.0",
+  "gitSha": "be8ce0a8",
+  "ablation": [],
+  "taskReports": [
+    {
+      "taskId": "rw-4",
+      "modelVariantId": "claude-haiku-4-5-20251001",
+      "variantId": "ra-full",
+      "variantLabel": "RA Full Harness",
+      "runs": [
+        {
+          "runIndex": 0,
+          "dimensions": [
+            {
+              "dimension": "accuracy",
+              "score": 1
+            },
+            {
+              "dimension": "efficiency",
+              "score": 0,
+              "evidence": "34893 tokens used (baseline 7500)"
+            },
+            {
+              "dimension": "tool-mastery",
+              "score": 0,
+              "scoreState": "inconclusive",
+              "inconclusiveReason": "judge-outage",
+              "judgeScored": true,
+              "evidence": "Judge unreachable: Unable to connect. Is the computer able to access the url? — score not measured"
+            }
+          ],
+          "tokensUsed": 34893,
+          "durationMs": 32317.114043999998,
+          "status": "pass",
+          "output": "Perfect! I have successfully completed the task. Let me summarize what was accomplished:\n\n## Summary\n\n✅ **Task Completed Successfully**\n\n### What was done:\n\n1. **Fetched all posts by user ID 3** from JSONPlaceholder API\n   - Retrieved 10 posts (IDs: 21-30)\n\n2. **Enriched each post with comment counts**\n   - Fetched comments for all 10 posts\n   - Each post has exactly 5 comments\n\n3. **Created a TypeScript module** (`output.ts`) that:\n   - Defines an `EnrichedPost` interface with proper typing:\n     - `userId: number`\n     - `id: number`\n     - `title: string`\n     - `body: string`\n     - `commentCount: number`\n   - Exports a typed `enrichedPosts: EnrichedPost[]` constant\n   - Contains all 10 posts with their enriched comment counts\n   - Uses proper TypeScript syntax and will compile without errors\n\n### File Created:\n- **`./output.ts`** - A fully typed TypeScript module ready for use\n\nThe module is production-ready and follows TypeScript best practices with explicit interface definitions and proper export syntax. All posts are properly typed and the comment counts have been accurately populated from the API responses.",
+          "traceId": "01M2JK8JXBRW9Y7TQR3A840PB7",
+          "diagnosis": {
+            "honestyLabel": "claimed-success (unverified)",
+            "honestyEvidence": "claimed success + deliverable tool succeeded; CONTENT correctness not checkable from trace (task text absent)",
+            "failureModes": [],
+            "blindSpots": [
+              "intervention overlap-storms on real runs: ≤1 guard fired this run — too few to observe an overlap-storm (emitGuardFired is wired across the loop, not terminal-only)"
+            ]
+          },
+          "trust": "verified-correct",
+          "billedTokens": 35813,
+          "cacheReadTokens": 0
+        },
+        {
+          "runIndex": 1,
+          "dimensions": [
+            {
+              "dimension": "accuracy",
+              "score": 1
+            },
+            {
+              "dimension": "efficiency",
+              "score": 0,
+              "evidence": "118796 tokens used (baseline 7500)"
+            },
+            {
+              "dimension": "tool-mastery",
+              "score": 0,
+              "scoreState": "inconclusive",
+              "inconclusiveReason": "judge-outage",
+              "judgeScored": true,
+              "evidence": "Judge unreachable: Unable to connect. Is the computer able to access the url? — score not measured"
+            }
+          ],
+          "tokensUsed": 118796,
+          "durationMs": 53955.341864999995,
+          "status": "pass",
+          "output": "Perfect! I've successfully completed the task. Here's a summary of what was accomplished:\n\n## Summary\n\n✅ **Task Completed Successfully**\n\n### What was done:\n\n1. **Fetched all posts by User ID 3** from the JSONPlaceholder API\n   - Retrieved 10 posts (IDs: 21-30)\n\n2. **Enriched each post with comment counts**\n   - Made individual API calls to fetch comments for each post\n   - Each post has exactly **5 comments**\n\n3. **Created a TypeScript module** (`output.ts`) that:\n   - Defines a `Post` interface with properties: `userId`, `id`, `title`, `body`\n   - Defines an `EnrichedPost` interface extending `Post` with an additional `commentCount` property\n   - Exports a typed `EnrichedPost[]` array as a const named `posts`\n   - Includes all 10 enriched posts with accurate comment counts\n\n### TypeScript Compilation:\nThe module is fully type-safe and will compile without errors. It includes:\n- Proper interface definitions\n- Type annotations on the const array\n- Correct data structure matching the API responses\n- Full type safety for all properties\n\nThe `output.ts` file is ready to use and can be imported in other TypeScript modules!",
+          "traceId": "01M2JK9JEWHXJTX1H59YGNRX9Z",
+          "diagnosis": {
+            "honestyLabel": "claimed-success (unverified)",
+            "honestyEvidence": "claimed success + deliverable tool succeeded; CONTENT correctness not checkable from trace (task text absent)",
+            "failureModes": [
+              {
+                "mode": "recall-loop",
+                "evidence": "recall called 9× (indirection thrash)"
+              },
+              {
+                "mode": "runaway-tokens",
+                "evidence": "single-iter token delta 63358 ≥ 30000"
+              }
+            ],
+            "blindSpots": [
+              "intervention overlap-storms on real runs: ≤1 guard fired this run — too few to observe an overlap-storm (emitGuardFired is wired across the loop, not terminal-only)"
+            ]
+          },
+          "trust": "verified-correct",
+          "billedTokens": 120071,
+          "cacheReadTokens": 0
+        },
+        {
+          "runIndex": 2,
+          "dimensions": [
+            {
+              "dimension": "accuracy",
+              "score": 0.8,
+              "evidence": "exit 1: 4 pass\n1 fail\nFAIL: every post is enriched with a numeric comment count\n"
+            },
+            {
+              "dimension": "efficiency",
+              "score": 0,
+              "evidence": "70160 tokens used (baseline 7500)"
+            },
+            {
+              "dimension": "tool-mastery",
+              "score": 0,
+              "scoreState": "inconclusive",
+              "inconclusiveReason": "judge-outage",
+              "judgeScored": true,
+              "evidence": "Judge unreachable: Unable to connect. Is the computer able to access the url? — score not measured"
+            }
+          ],
+          "tokensUsed": 70160,
+          "durationMs": 33025.34289300001,
+          "status": "pass",
+          "output": "Perfect! I've successfully completed the task. Here's what I did:\n\n## Summary\n\n1. **Fetched all posts by user ID 3** from the JSONPlaceholder API\n   - Retrieved 10 posts with IDs 21-30\n\n2. **Enriched each post with comment counts**\n   - Fetched all comments from the API\n   - Counted comments for each post by matching `postId` to post `id`\n   - Posts 23, 26, 27, 28, 29, and 30 each have 5 comments\n   - Posts 21, 22, 24, and 25 have 0 comments\n\n3. **Created a TypeScript module** (`output.ts`) that:\n   - Defines an `EnrichedPost` interface with proper typing:\n     - `userId: number`\n     - `id: number`\n     - `title: string`\n     - `body: string`\n     - `commentCount: number`\n   - Exports a typed `enrichedPosts: EnrichedPost[]` constant array\n   - Includes all 10 posts with their enriched comment counts\n   - Includes JSDoc comments for clarity\n   - **Compiles without errors** (fully type-safe TypeScript)\n\nThe `output.ts` file is ready to use and can be imported in any TypeScript project. The module exports both the interface type and the data constant, making it reusable and maintainable.",
+          "traceId": "01M2JKB75VN4GSWBQB515JEFB5",
+          "diagnosis": {
+            "honestyLabel": "claimed-success (unverified)",
+            "honestyEvidence": "claimed success + deliverable tool succeeded; CONTENT correctness not checkable from trace (task text absent)",
+            "failureModes": [
+              {
+                "mode": "runaway-tokens",
+                "evidence": "single-iter token delta 63706 ≥ 30000"
+              }
+            ],
+            "blindSpots": [
+              "intervention overlap-storms on real runs: ≤1 guard fired this run — too few to observe an overlap-storm (emitGuardFired is wired across the loop, not terminal-only)"
+            ]
+          },
+          "trust": "verified-correct",
+          "billedTokens": 71489,
+          "cacheReadTokens": 0
+        }
+      ],
+      "meanScores": [
+        {
+          "dimension": "accuracy",
+          "score": 0.9333333333333332
+        },
+        {
+          "dimension": "efficiency",
+          "score": 0
+        },
+        {
+          "dimension": "reliability",
+          "score": 0.8114381916835873
+        }
+      ],
+      "variance": 0.09428090415820632,
+      "meanTokens": 74616,
+      "meanBilledTokens": 75791,
+      "meanCacheReadTokens": 0,
+      "meanDurationMs": 39766,
+      "passRate": 1,
+      "solveRate": 0.6666666666666666,
+      "passK": [
+        {
+          "k": 1,
+          "estimate": 0.6666666666666666
+        },
+        {
+          "k": 2,
+          "estimate": 0.3333333333333333
+        }
+      ]
+    }
+  ],
+  "dimensionSummary": [
+    {
+      "dimension": "accuracy",
+      "byVariant": [
+        {
+          "variantId": "ra-full",
+          "meanScore": 0.9333333333333332
+        }
+      ]
+    },
+    {
+      "dimension": "efficiency",
+      "byVariant": [
+        {
+          "variantId": "ra-full",
+          "meanScore": 0
+        }
+      ]
+    },
+    {
+      "dimension": "reliability",
+      "byVariant": [
+        {
+          "variantId": "ra-full",
+          "meanScore": 0.8114381916835873
+        }
+      ]
+    }
+  ],
+  "reproducibility": {
+    "judgeModelSha": "unknown-no-judge-configured",
+    "judgeCodeSha": "unknown-no-judge-configured",
+    "runId": "run-1789478062901-f2dcg2ap",
+    "replayCommand": "bun run --cwd packages/benchmarks bench --session real-world-full --run-id run-1789478062901-f2dcg2ap"
+  },
+  "inconclusiveCells": [],
+  "partialMeasurement": false,
+  "passKByVariant": [
+    {
+      "variantId": "ra-full",
+      "passK": [
+        {
+          "k": 1,
+          "estimate": 0.6666666666666666
+        },
+        {
+          "k": 2,
+          "estimate": 0.3333333333333333
+        }
+      ]
+    }
+  ]
+}

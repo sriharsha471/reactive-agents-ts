@@ -191,6 +191,7 @@ export const executeDirect = (
       kernelPass: "direct:main",
       taskDescription: input.taskDescription,
       modelId: input.modelId,
+      providerName: input.providerName,
       taskCategory: input.taskCategory,
       temperature: kernelInput.temperature,
       // No strategySwitching — direct is by definition not a switching strategy

@@ -205,6 +205,7 @@ export const executeReActKernel = (
       taskId: input.taskId,
       kernelPass: input.kernelPass,
       modelId: input.modelId,
+      providerName: input.providerName,
       taskDescription: input.task,
       temperature: input.temperature,
       exitOnAllToolsCalled: input.exitOnAllToolsCalled,

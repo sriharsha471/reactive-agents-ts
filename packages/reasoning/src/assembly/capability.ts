@@ -45,7 +45,6 @@ export interface ResolvedCapability {
    * legacy code path. Env override: `RA_TOOL_RESULT_BUDGET_CHARS`.
    */
   readonly toolResultPreserveBudget: number;
-  predictNumCtx(assembledPromptTokens: number): number;
 }
 
 const BUCKETS = [8192, 16384, 32768, 65536, 131072] as const;
@@ -102,8 +101,5 @@ export function resolveCapability(input: CapabilityInput): ResolvedCapability {
     ...input,
     recencyBudgetChars,
     toolResultPreserveBudget,
-    predictNumCtx(assembledPromptTokens: number): number {
-      return nextNumCtx(assembledPromptTokens, input.outputBudget, undefined, undefined);
-    },
   };
 }

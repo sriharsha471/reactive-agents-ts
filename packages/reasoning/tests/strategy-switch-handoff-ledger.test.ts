@@ -13,6 +13,16 @@ import { appendEntry } from "../src/kernel/ledger/run-ledger.js";
 import { renderStandingFrame } from "../src/assembly/standing-frame.js";
 import { makeStep } from "../src/kernel/capabilities/sense/step-utils.js";
 
+// Partial test fixtures widened past their real (much larger) interfaces —
+// same category as the sanctioned `… as unknown as KernelInput` precedent in
+// `exhaustion-continuation-leak.test.ts:54`. Each object here declares only
+// the handful of fields `applyStrategySwitch`/`initialKernelState` actually
+// read; a fully-honest KernelHooks/KernelContext fixture would need a real
+// ToolServiceInstance Option + ContextProfile + ToolCallingDriver, which is
+// disproportionate for 4 fixture objects in one test file. Counted against
+// `TESTS_CEILING` in packages/runtime/test/as-unknown-as-ceiling.test.ts
+// (Fix 2, final fix wave, 2026-09-15) rather than routed through a new typed
+// builder — see that test's rationale comment.
 const hooks = { onStrategySwitched: () => Effect.void } as unknown as KernelHooks;
 const options = { strategy: "reactive" } as unknown as KernelRunOptions;
 const input = { task: "t", requiredTools: [] } as unknown as KernelInput;

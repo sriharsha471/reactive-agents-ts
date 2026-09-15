@@ -15,12 +15,6 @@ describe("resolveCapability — single source; budgets derived", () => {
       delete process.env.RA_RECENCY_BUDGET_CHARS;
     }
   });
-  it("predicts num_ctx as smallest bucket ≥ assembled+output+headroom", () => {
-    const cap = resolveCapability({ window: 131072, outputBudget: 2000, dialect: "native-fc", tier: "local" });
-    expect(cap.predictNumCtx(6000)).toBe(16384); // 6000 + 2000 + 1024 → 16k bucket
-    expect(cap.predictNumCtx(20000)).toBe(32768);
-  });
-
   it("toolResultPreserveBudget is tier-aware (mirrors legacy CONTEXT_PROFILES.toolResultMaxChars)", () => {
     // Phase-A 2026-06-02: separating per-result preservation from total
     // recency-window. Tier-aware defaults match the empirically-tuned

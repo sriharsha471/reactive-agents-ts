@@ -111,7 +111,7 @@ export const EntropySensorServiceLive = (
               taskCategory, taskDescription,
             } = params;
 
-            const model = lookupModel(modelId, config.models);
+            const model = lookupModel(modelId, config.models, params.providerName);
 
             // 1. Token entropy (from logprobs)
             const tokenResult = config.entropy.tokenEntropy !== false

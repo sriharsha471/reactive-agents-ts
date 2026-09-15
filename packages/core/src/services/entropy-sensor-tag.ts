@@ -80,6 +80,7 @@ export class EntropySensorService extends Context.Tag("EntropySensorService")<
       iteration: number;
       maxIterations: number;
       modelId: string;
+      providerName?: string;
       temperature: number;
       priorThought?: string;
       logprobs?: readonly TokenLogprobLike[];

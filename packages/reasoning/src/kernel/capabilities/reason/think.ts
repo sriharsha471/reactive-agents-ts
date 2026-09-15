@@ -1210,7 +1210,7 @@ export function handleThinking(
     // Store logprobs in entropy meta for the entropy sensor
     if (accumulatedLogprobs.length > 0) {
       const entropyMeta = state.meta.entropy ?? {};
-      state = transitionState(state, { meta: { ...state.meta, entropy: { ...entropyMeta, lastLogprobs: accumulatedLogprobs } } });
+      state = transitionState(state, { meta: { ...state.meta, entropy: { ...entropyMeta, lastLogprobs: accumulatedLogprobs, providerName: input.providerName } } });
     }
 
     // Build response shape matching original llm.complete() return

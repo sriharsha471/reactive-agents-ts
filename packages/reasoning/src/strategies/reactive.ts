@@ -272,6 +272,7 @@ export const executeReactive = (
       kernelPass: "reactive:main",
       taskDescription: input.taskDescription,
       modelId: input.modelId,
+      providerName: input.providerName,
       taskCategory: input.taskCategory,
       temperature: kernelInput.temperature,
       strategySwitching: input.strategySwitching

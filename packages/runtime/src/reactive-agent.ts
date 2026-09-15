@@ -20,7 +20,7 @@ import {
     Fiber,
 } from 'effect'
 import { deriveReceiptModelId } from './builder/helpers.js'
-import { deriveTaskOutcome } from './engine/finalize/derive-outcome.js'
+import { deriveTaskOutcome, deriveMetadataToolCalls } from './engine/finalize/derive-outcome.js'
 import { resolveReceiptSigningKey, signReceipt } from './receipt-signing.js'
 import {
     CapabilityRegistry,
@@ -1551,21 +1551,7 @@ export class ReactiveAgent<TOut = unknown> {
                     readonly content: string
                     readonly metadata?: Record<string, unknown>
                 }> }).reasoningSteps
-                const derivedToolCalls = (reasoningSteps ?? [])
-                    .filter((s) => s.type === 'action')
-                    .map((s) => {
-                        const tc = s.metadata?.toolCall as
-                            | { name?: string; arguments?: unknown; id?: string }
-                            | undefined
-                        return tc?.name
-                            ? {
-                                  name: tc.name,
-                                  ...(tc.arguments !== undefined ? { arguments: tc.arguments } : {}),
-                                  ...(tc.id !== undefined ? { id: tc.id } : {}),
-                              }
-                            : null
-                    })
-                    .filter((x): x is { name: string; arguments?: unknown; id?: string } => x !== null)
+                const derivedToolCalls = deriveMetadataToolCalls(reasoningSteps)
                 const enrichedMetadata: AgentResultMetadata = {
                     ...rawMetadata,
                     ...(reasoningSteps !== undefined ? { reasoningSteps } : {}),

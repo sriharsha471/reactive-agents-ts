@@ -170,3 +170,28 @@ export function deriveTaskOutcome(taskResult: TaskResult, ctx: DeriveTaskOutcome
 
     return { toolCalls, deliverables, goalAchieved, receipt }
 }
+
+/**
+ * `AgentResultMetadata.toolCalls` — single owner for `run()` and
+ * `runStream()`. Extracted verbatim (task 4, wire-or-delete hardening wave,
+ * 2026-09-14) from `reactive-agent.ts`'s inline `derivedToolCalls`
+ * computation so `execute-stream.ts` can compute the identical projection
+ * instead of leaving `runStream()`'s `metadata.toolCalls` unset.
+ */
+export function deriveMetadataToolCalls(
+    steps: ReadonlyArray<{ readonly type: string; readonly metadata?: Record<string, unknown> }> | undefined,
+): Array<{ name: string; arguments?: unknown; id?: string }> {
+    return (steps ?? [])
+        .filter((s) => s.type === 'action')
+        .map((s) => {
+            const tc = s.metadata?.toolCall as { name?: string; arguments?: unknown; id?: string } | undefined
+            return tc?.name
+                ? {
+                      name: tc.name,
+                      ...(tc.arguments !== undefined ? { arguments: tc.arguments } : {}),
+                      ...(tc.id !== undefined ? { id: tc.id } : {}),
+                  }
+                : null
+        })
+        .filter((x): x is { name: string; arguments?: unknown; id?: string } => x !== null)
+}

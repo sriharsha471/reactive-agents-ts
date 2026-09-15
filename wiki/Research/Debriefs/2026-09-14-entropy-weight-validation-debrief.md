@@ -126,6 +126,17 @@ runs; no `bare-llm` baseline was collected because it was not needed for this
 comparison. No frontier-tier model was run — a mid-task rate-limit interruption
 constrained scope before a frontier arm could be added.
 
+**Additional constraint (discovered post-run):** Task 1's `providerName`-threading
+fix was not actually live during this bench run — the empirical run executed
+against a stale pre-fix `dist` build of packages/reasoning and
+packages/reactive-intelligence (the feedback_bun_cache_resolution_trap, hit in
+a new context). The fix is source-correct and unit-tested at the source level,
+but was never observed working end-to-end in a live run. All 3 trace files show
+`modelTier: "unknown"` rather than `"local"`, confirming the pre-fix code path
+was exercised. This does not invalidate the evidence or verdict (modelTier is a
+pass-through label, never used in weight calculations), but is documented here
+for completeness.
+
 The consequence is mechanical, not a modeling failure: a corpus of
 (one model, one task, three repeats, all pass) cannot contain a
 `claimed-but-wrong` or `dishonest` row by construction, regardless of how the

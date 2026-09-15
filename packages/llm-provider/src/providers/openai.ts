@@ -249,6 +249,11 @@ export interface OpenAICompatOptions {
   readonly providerName: LLMProvider;
   /** Extract this provider's API key from the resolved LLMConfig. */
   readonly resolveApiKey: (config: typeof LLMConfig.Service) => string | undefined;
+  /**
+   * Env var name this provider's own key is read from, surfaced in the
+   * refusal message when no key is configured (D-2026-09-08-O).
+   */
+  readonly apiKeyEnvVar: string;
   /** Resolve the base URL override; `undefined` uses the SDK default (OpenAI). */
   readonly resolveBaseUrl?: (config: typeof LLMConfig.Service) => string | undefined;
   /** Model used when `config.defaultModel` targets another provider (e.g. claude). */
@@ -268,7 +273,7 @@ export const makeOpenAICompatProvider = (opts: OpenAICompatOptions) =>
   LLMService,
   Effect.gen(function* () {
     const config = yield* LLMConfig;
-    const { providerName, resolveApiKey, resolveBaseUrl, fallbackModel, supportsEmbeddings } = opts;
+    const { providerName, resolveApiKey, resolveBaseUrl, fallbackModel, supportsEmbeddings, apiKeyEnvVar } = opts;
     const supportsLogprobs = opts.supportsLogprobs ?? true;
 
     // Lazy-load the SDK via dynamic import so Bun `mock.module(...)` can
@@ -299,6 +304,17 @@ export const makeOpenAICompatProvider = (opts: OpenAICompatOptions) =>
         const baseURL = config.providerConfig?.baseUrl ?? resolveBaseUrl?.(config);
         const apiKey = config.providerConfig?.apiKey ?? resolveApiKey(config);
         const headers = config.providerConfig?.headers;
+        // D-2026-09-08-O: the `openai` SDK falls back to OPENAI_API_KEY when
+        // apiKey is undefined. For any provider other than openai itself that
+        // would send an OpenAI key to a third-party host — refuse instead.
+        if (apiKey === undefined && providerName !== "openai") {
+          return Promise.reject(
+            new Error(
+              `${providerName}: no API key. Set ${apiKeyEnvVar} (loaded before build()) ` +
+                `or pass .withProvider("${providerName}", { apiKey }).`,
+            ),
+          );
+        }
         _clientPromise = (
           import("openai") as unknown as Promise<OpenAIModule>
         ).then(({ default: OpenAI }) => new OpenAI({
@@ -322,7 +338,10 @@ export const makeOpenAICompatProvider = (opts: OpenAICompatOptions) =>
         // timeoutMs restated in the error — the two can never drift.
         const timeoutMs = resolveCloudTimeoutMs(request, config);
         return Effect.gen(function* () {
-          const client = yield* Effect.promise(() => getClient());
+          const client = yield* Effect.tryPromise({
+            try: () => getClient(),
+            catch: (error) => toEffectError(error, providerName),
+          });
           const model = typeof request.model === 'string'
             ? request.model
             : request.model?.model ?? defaultModel;
@@ -415,7 +434,10 @@ export const makeOpenAICompatProvider = (opts: OpenAICompatOptions) =>
 
       stream: (request) =>
         Effect.gen(function* () {
-          const client = yield* Effect.promise(() => getClient());
+          const client = yield* Effect.tryPromise({
+            try: () => getClient(),
+            catch: (error) => toEffectError(error, providerName),
+          });
           const model = typeof request.model === 'string'
             ? request.model
             : request.model?.model ?? defaultModel;
@@ -645,7 +667,10 @@ export const makeOpenAICompatProvider = (opts: OpenAICompatOptions) =>
           const model = typeof request.model === 'string'
             ? request.model
             : request.model?.model ?? defaultModel;
-          const client = yield* Effect.promise(() => getClient());
+          const client = yield* Effect.tryPromise({
+            try: () => getClient(),
+            catch: (error) => toEffectError(error, providerName),
+          });
           const maxRetries = request.maxParseRetries ?? 2;
 
           // ── Native JSON Schema mode (gpt-4o-2024-08-06+, o-series, gpt-4.1) ──
@@ -802,6 +827,7 @@ export const makeOpenAICompatProvider = (opts: OpenAICompatOptions) =>
 export const OpenAIProviderLive = makeOpenAICompatProvider({
   providerName: "openai",
   resolveApiKey: (c) => c.openaiApiKey,
+  apiKeyEnvVar: "OPENAI_API_KEY",
   fallbackModel: "gpt-4o",
   supportsEmbeddings: true,
 });
@@ -810,6 +836,7 @@ export const OpenAIProviderLive = makeOpenAICompatProvider({
 export const GroqProviderLive = makeOpenAICompatProvider({
   providerName: "groq",
   resolveApiKey: (c) => c.groqApiKey,
+  apiKeyEnvVar: "GROQ_API_KEY",
   resolveBaseUrl: (c) => c.groqBaseUrl ?? "https://api.groq.com/openai/v1",
   fallbackModel: "openai/gpt-oss-120b",
   supportsEmbeddings: false,
@@ -820,6 +847,7 @@ export const GroqProviderLive = makeOpenAICompatProvider({
 export const XAIProviderLive = makeOpenAICompatProvider({
   providerName: "xai",
   resolveApiKey: (c) => c.xaiApiKey,
+  apiKeyEnvVar: "XAI_API_KEY",
   resolveBaseUrl: (c) => c.xaiBaseUrl ?? "https://api.x.ai/v1",
   fallbackModel: "grok-4",
   supportsEmbeddings: false,

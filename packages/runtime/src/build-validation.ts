@@ -35,13 +35,15 @@ const NO_KEY_PROVIDERS = new Set(["ollama", "test"]);
 /**
  * The SINGLE build-time read path for a provider's API key. Both the
  * validation gate and `logBuildInfo` read through this so the warning/error
- * a user sees and the value the build actually acts on can never disagree
- * (the 2026-07-01 split-brain: the provider layer captured the key at
- * module-import time via `llmConfigFromEnv`, while validation read
- * `process.env` at build time — deleting a key produced BOTH a "(missing)"
- * warning AND a successful paid call). Reading `process.env` here at build
- * time, combined with `build()` failing fast on a missing key, closes that
- * gap: a removed key is now seen consistently and no call is issued.
+ * a user sees and the value the build actually acts on can never disagree.
+ * Historically (2026-07-01) this was a split-brain: the provider layer
+ * captured the key at module-import time via the then-eager
+ * `llmConfigFromEnv`, while validation read `process.env` at build time —
+ * deleting a key produced BOTH a "(missing)" warning AND a successful paid
+ * call. That gap is now closed at the source (D-2026-09-08-O):
+ * `LLMConfigFromEnv` reads `process.env` lazily at layer-build time via
+ * `readLLMConfigFromEnv()`, so this function and the provider layer read the
+ * same value at the same time by construction, not by convention.
  */
 export function readProviderApiKey(provider: ProviderName): string | undefined {
   const keyName = PROVIDER_API_KEY_MAP[provider];

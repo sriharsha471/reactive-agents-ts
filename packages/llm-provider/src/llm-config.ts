@@ -374,17 +374,23 @@ export class LLMConfig extends Context.Tag("LLMConfig")<
  * @example
  * ```typescript
  * // Use defaults from environment
- * const config = llmConfigFromEnv;
+ * const config = readLLMConfigFromEnv();
  *
  * // Override specific fields
  * const customConfig = LLMConfig.of({
- *   ...llmConfigFromEnv,
+ *   ...readLLMConfigFromEnv(),
  *   defaultModel: "gpt-4o",
  *   defaultProvider: "openai"
  * });
  * ```
  */
-export const llmConfigFromEnv = LLMConfig.of({
+/**
+ * Build LLMConfig from `process.env` NOW. Called at layer-build time so a
+ * `.env` loaded after `import "reactive-agents"` is still honored
+ * (D-2026-09-08-O). Field list and defaults documented above.
+ */
+export function readLLMConfigFromEnv(): typeof LLMConfig.Service {
+  return LLMConfig.of({
   defaultProvider: "anthropic",
   defaultModel:
     process.env.LLM_DEFAULT_MODEL || "claude-sonnet-4-6",
@@ -432,12 +438,24 @@ export const llmConfigFromEnv = LLMConfig.of({
     : {}),
   observabilityVerbosity: (process.env.LLM_OBSERVABILITY_VERBOSITY as ObservabilityVerbosity | undefined) ?? "full",
   pricingRegistry: {},
-});
+  });
+}
+
+/**
+ * @deprecated Import-time SNAPSHOT of `process.env` — keys loaded after the
+ * package is imported are missing. Use `readLLMConfigFromEnv()` (or the
+ * `LLMConfigFromEnv` layer, which reads lazily). Kept for API compatibility.
+ */
+export const llmConfigFromEnv = readLLMConfigFromEnv();
 
 /**
  * Effect-TS Layer that provides LLMConfig from environment variables.
  * Use this layer to automatically populate LLMConfig from process.env.
  * Can be overridden with a custom layer for testing or custom configuration.
+ *
+ * Reads `process.env` when the layer is BUILT, not when the module loads
+ * (D-2026-09-08-O) — a `.env` loaded after `import "reactive-agents"` is
+ * still honored.
  *
  * @example
  * ```typescript
@@ -449,6 +467,6 @@ export const llmConfigFromEnv = LLMConfig.of({
  * Effect.runPromise(effect);
  * ```
  *
- * @see llmConfigFromEnv
+ * @see readLLMConfigFromEnv
  */
-export const LLMConfigFromEnv = Layer.succeed(LLMConfig, llmConfigFromEnv);
+export const LLMConfigFromEnv = Layer.sync(LLMConfig, readLLMConfigFromEnv);

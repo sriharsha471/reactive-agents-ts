@@ -113,7 +113,11 @@ LITELLM_BASE_URL=http://localhost:4000
 LITELLM_API_KEY=...
 ```
 
-`llmConfigFromEnv` / `LLMConfigFromEnv` build `LLMConfig` from the environment automatically.
+`readLLMConfigFromEnv()` / `LLMConfigFromEnv` build `LLMConfig` from the environment automatically.
+`LLMConfigFromEnv` reads `process.env` lazily, when the layer is *built* (not when this
+module is imported) — a `.env` loaded after `import "reactive-agents"` is still honored
+(D-2026-09-08-O). `llmConfigFromEnv` is a `@deprecated` import-time snapshot kept only for
+API compatibility; prefer `readLLMConfigFromEnv()` for any one-off read.
 
 ## Model presets
 

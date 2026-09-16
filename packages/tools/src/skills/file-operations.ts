@@ -373,13 +373,11 @@ const HARNESS_ECHO_PATTERNS: ReadonlyArray<{ readonly re: RegExp; readonly what:
 ];
 
 /**
- * Why this content must not be written, or `undefined` when it is fine.
- * Exported for the write-boundary tests; used by `fileWriteHandler` below.
+ * Refuse content that is a harness message echoed back, not real content.
+ * Shared by file-write (whole-file) and file-edit (replacement text) — an
+ * echoed error string is the same corruption in either position.
  */
-export function writeContentRejection(
-  filePath: string,
-  content: string,
-): string | undefined {
+export function harnessEchoRejection(content: string): string | undefined {
   const trimmed = content.trim();
   for (const { re, what } of HARNESS_ECHO_PATTERNS) {
     if (re.test(trimmed)) {
@@ -390,6 +388,21 @@ export function writeContentRejection(
       );
     }
   }
+  return undefined;
+}
+
+/**
+ * Why this content must not be written, or `undefined` when it is fine.
+ * Exported for the write-boundary tests; used by `fileWriteHandler` below.
+ */
+export function writeContentRejection(
+  filePath: string,
+  content: string,
+): string | undefined {
+  const echo = harnessEchoRejection(content);
+  if (echo !== undefined) return echo;
+
+  const trimmed = content.trim();
   // A `.json` deliverable that does not parse is a guaranteed downstream
   // failure, and writing it makes the run report a corrupt artifact as
   // produced. JSON is the one structured family whose validity is cheaply and
@@ -439,4 +452,121 @@ export const fileWriteHandler = (
       return { written: true, path: resolved };
     },
     catch: toToolError("file-write", "File write"),
+  });
+
+export const fileEditTool: ToolDefinition = {
+  name: "file-edit",
+  description:
+    "Replace an exact block of text inside an existing file, leaving the rest untouched. " +
+    "Use this instead of file-write whenever the file already exists and you are changing part of it — " +
+    "file-write overwrites the WHOLE file and will destroy content you did not re-send. " +
+    "Returns { edited: true, path: '...', replacements: n } on success. " +
+    "The edit is refused (and the file left untouched) if 'oldText' is missing from the file, " +
+    "or appears more than once without 'replaceAll'.",
+  parameters: [
+    {
+      name: "path",
+      type: "string",
+      description:
+        "REQUIRED. Path of the existing file to edit, RELATIVE to the working root. " +
+        "Examples: './src/main.ts', './notes.md'. " +
+        "Never invent absolute paths — they resolve outside the working root and the call is refused.",
+      required: true,
+    },
+    {
+      name: "oldText",
+      type: "string",
+      description:
+        "REQUIRED. The exact text to find, copied verbatim from the file including indentation and newlines. " +
+        "It must match ONE place in the file. If it appears more than once, add surrounding lines " +
+        "until the block is unique, or set replaceAll to change every occurrence.",
+      required: true,
+    },
+    {
+      name: "newText",
+      type: "string",
+      description:
+        "REQUIRED. The text that replaces oldText. Pass an empty string to delete the block.",
+      required: true,
+    },
+    {
+      name: "replaceAll",
+      type: "boolean",
+      description:
+        "Replace every occurrence of oldText instead of requiring a unique match. Default: false.",
+      required: false,
+      default: false,
+    },
+  ],
+  returnType:
+    "{ edited: true, path: string, replacements: number } — confirms the file was modified in place",
+  category: "file",
+  riskLevel: "high",
+  timeoutMs: 5_000,
+  // Same posture as file-write deliberately: a weaker gate here would let an
+  // agent mutate an approval-gated file by editing it instead of writing it.
+  requiresApproval: true,
+  source: "builtin",
+  produces: "file",
+};
+
+/** Count non-overlapping occurrences of `needle` in `haystack`. */
+function countOccurrences(haystack: string, needle: string): number {
+  let count = 0;
+  let from = 0;
+  for (;;) {
+    const at = haystack.indexOf(needle, from);
+    if (at === -1) return count;
+    count += 1;
+    from = at + needle.length;
+  }
+}
+
+export const fileEditHandler = (
+  args: Record<string, unknown>,
+): Effect.Effect<unknown, ToolExecutionError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const filePath = args.path as string;
+      const oldText = args.oldText as string;
+      const newText = args.newText as string;
+      const replaceAll = args.replaceAll === true;
+
+      if (typeof oldText !== "string" || oldText.length === 0) {
+        throw new Error(
+          "'oldText' must be the exact, non-empty text to replace. " +
+            "To create a new file or replace its entire contents, use file-write instead.",
+        );
+      }
+
+      // An echoed harness message is not content in this position either.
+      const rejection = harnessEchoRejection(newText);
+      if (rejection !== undefined) throw new Error(rejection);
+
+      const resolved = await confinePath(filePath);
+      const original = await fs.readFile(resolved, "utf-8");
+
+      const count = countOccurrences(original, oldText);
+      if (count === 0) {
+        throw new Error(
+          `'oldText' was not found in ${path.basename(resolved)}, so nothing was changed. ` +
+            `Read the file first and copy the block verbatim — whitespace and indentation must match exactly.`,
+        );
+      }
+      if (count > 1 && !replaceAll) {
+        throw new Error(
+          `'oldText' matches ${count} times in ${path.basename(resolved)}, so the edit is ambiguous ` +
+            `and nothing was changed. Add surrounding lines until the block is unique, ` +
+            `or set replaceAll: true to change all ${count} occurrences.`,
+        );
+      }
+
+      const updated = replaceAll
+        ? original.split(oldText).join(newText)
+        : original.replace(oldText, newText);
+
+      await fs.writeFile(resolved, updated, { encoding: "utf-8" });
+      return { edited: true, path: resolved, replacements: replaceAll ? count : 1 };
+    },
+    catch: toToolError("file-edit", "File edit"),
   });

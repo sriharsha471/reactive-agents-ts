@@ -83,8 +83,9 @@ export function toTraceEvent(raw: AgentEvent, seq: number): TraceEvent | null {
         // output and replay's diffTraces().outputDiff was structurally blind.
         ...(raw.output !== undefined ? { output: raw.output } : {}),
         ...(raw.outputTruncated === true ? { outputTruncated: true } : {}),
+        ...(raw.terminationReason !== undefined ? { terminatedBy: raw.terminationReason } : {}),
         totalTokens: raw.totalTokens,
-        totalCostUsd: 0,
+        totalCostUsd: raw.totalCostUsd ?? 0,
         durationMs: raw.durationMs,
       }
       return ev

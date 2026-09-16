@@ -199,6 +199,25 @@ export function recordHarnessRecompiled(
 }
 
 /**
+ * Record a strategy switch's carried context as a typed ledger fact. The
+ * standing frame renders it (standing-frame.ts) and compaction protects it
+ * (compaction.ts) — replaces string-folding the handoff into priorContext.
+ */
+export function recordHandoff(
+  ledger: RunLedger | undefined,
+  handoff: { readonly from: string; readonly to: string; readonly summary: string },
+  iteration: number,
+): RunLedger {
+  return appendEntry(ledger, {
+    kind: "handoff",
+    iteration,
+    from: handoff.from,
+    to: handoff.to,
+    summary: handoff.summary,
+  });
+}
+
+/**
  * Record the empirical measurement claims asserted in the final output, each
  * classified (grounded|not) against the tool-observation corpus built from the
  * run's steps. Previously extracted by the fabrication guard and discarded

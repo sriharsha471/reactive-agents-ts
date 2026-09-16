@@ -65,10 +65,6 @@ export const KernelMetaToolsSchema = Schema.Struct({
    *  so drift is visible. Strategy-agnostic (react/reflexion/code-action get
    *  the tracking rail plan-execute always had). */
   todo: Schema.optional(Schema.Boolean),
-  /** Overhaul (RA_OVERHAUL) — register write_result_to_file: the model orchestrates
-   *  a deliverable by REFERENCING a stored result; the system materializes the full
-   *  data. Replaces the marker-copy / transcription path. */
-  writeResultToFile: Schema.optional(Schema.Boolean),
   checkpoint: Schema.optional(Schema.Boolean),
   /** Earned-abstention action: model declines instead of fabricating when it
    *  cannot ground an answer / required input is unavailable. Availability is

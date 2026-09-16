@@ -89,10 +89,11 @@ export function evidenceFromStored(
   store: ResultStore,
   ref: string,
   previewBudget: number,
+  opts?: { readonly writeByRef?: boolean },
 ): EvidenceEntry {
   return {
     full: store.materialize(ref, "bullets"),
-    preview: store.preview(ref, previewBudget),
+    preview: store.preview(ref, previewBudget, opts),
     ...(isRecallableRef(ref) ? { storedKey: ref } : {}),
   };
 }

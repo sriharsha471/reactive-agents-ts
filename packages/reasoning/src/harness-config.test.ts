@@ -3,7 +3,7 @@ import { resolveHarnessConfig, fromDisclosureMode } from "./harness-config.js";
 
 const ENV_KEYS = [
   "RA_LAZY_TOOLS", "RA_TOOL_DISCOVERY", "RA_TOOL_INDEX", "RA_VERBOSE_RULES",
-  "RA_THOUGHT_CONTINUITY", "RA_RECENCY_BUDGET_CHARS",
+  "RA_RECENCY_BUDGET_CHARS",
 ] as const;
 
 afterEach(() => {

@@ -217,10 +217,15 @@ export const AgentStream = {
         if (event._tag === "StreamCompleted") {
           result = {
             output: event.output,
-            success: true,
+            // `?? true` only preserves behavior for events from older
+            // producers; every current producer sets `success` (task 4,
+            // wire-or-delete hardening wave).
+            success: event.success ?? true,
             taskId: event.taskId ?? "",
             agentId: event.agentId ?? "",
             metadata: event.metadata,
+            ...(event.terminatedBy !== undefined ? { terminatedBy: event.terminatedBy } : {}),
+            ...(event.goalAchieved !== undefined ? { goalAchieved: event.goalAchieved } : {}),
             // Trust receipt (Arc 1 Task 8 closure): "equivalent to agent.run()"
             // includes result.receipt — carried from StreamCompleted (absent
             // only on pause completions, which never grade).
@@ -251,10 +256,12 @@ export const AgentStream = {
               ...acc,
               result: {
                 output: event.output,
-                success: true,
+                success: event.success ?? true,
                 taskId: event.taskId ?? "",
                 agentId: event.agentId ?? "",
                 metadata: event.metadata,
+                ...(event.terminatedBy !== undefined ? { terminatedBy: event.terminatedBy } : {}),
+                ...(event.goalAchieved !== undefined ? { goalAchieved: event.goalAchieved } : {}),
                 // Trust receipt (Arc 1 Task 8 closure) — mirrors the
                 // AsyncIterable branch above.
                 ...(event.receipt !== undefined ? { receipt: event.receipt } : {}),

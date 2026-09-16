@@ -454,6 +454,8 @@ export type AgentEvent =
        * closed `TerminatedBy` schema (5 values).
        */
       readonly terminationReason?: string;
+      /** Run cost in USD (result.metadata.cost) — optional so older publishers stay valid. */
+      readonly totalCostUsd?: number;
       /** B8-T3b: the top-most run in this delegation tree (RunContext.rootRunId). */
       readonly rootRunId?: string;
       /** B8-T3b: the run that spawned this one (RunContext.parentRunId). */

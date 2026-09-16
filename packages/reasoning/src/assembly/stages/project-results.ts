@@ -1,6 +1,7 @@
 import type { AssemblyCtx } from "../assembly-ctx.js";
 import { pushStage, recordMessage } from "../trace.js";
 import { resolveHarnessConfig } from "../../harness-config.js";
+import { offersWriteByRef } from "../result-store.js";
 
 /**
  * Build the provider-valid conversation thread and project each tool result.
@@ -24,6 +25,7 @@ import { resolveHarnessConfig } from "../../harness-config.js";
  */
 export const projectResultsStage = (c: AssemblyCtx): AssemblyCtx => {
   const h = c.harness ?? resolveHarnessConfig();
+  const writeByRef = offersWriteByRef(c.tools.schemas);
   let messages = [...c.messages];
   let trace = c.trace;
   let full = 0;
@@ -77,30 +79,14 @@ export const projectResultsStage = (c: AssemblyCtx): AssemblyCtx => {
   // carried. The recency split preserves the latest result's content (large
   // budget, model can act) while still collapsing accumulated history.
   let pending: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = [];
-  // Thought continuity (RA_THOUGHT_CONTINUITY=1, experimental pending
-  // ablation). Default OFF: every replayed assistant turn renders
-  // `content: ""`, so the model re-reads its tool calls but never a word of
-  // its own reasoning — plans and derivations are re-derived from scratch
-  // each turn while the persona says "think step by step". ON: the thought
-  // event recorded for the turn is rendered as the assistant content, capped
-  // so accumulated prose cannot crowd out tool results. A trailing thought
-  // with no following tool call is NOT rendered — that is the terminal
-  // answer, which reaches the caller by its own path.
-  const renderThoughts = h.thoughtContinuity;
-  const THOUGHT_CAP = 600;
-  let pendingThought: string | undefined;
+  // Every replayed assistant turn renders `content: ""` — the model re-reads
+  // its tool calls but never a word of its own reasoning; plans and
+  // derivations are re-derived from scratch each turn.
   const flush = () => {
     if (pending.length === 0) return;
-    const thought =
-      renderThoughts && pendingThought !== undefined
-        ? pendingThought.length > THOUGHT_CAP
-          ? `${pendingThought.slice(0, THOUGHT_CAP)}…`
-          : pendingThought
-        : "";
-    messages = [...messages, { role: "assistant", content: thought, toolCalls: pending }];
-    trace = recordMessage(trace, { role: "assistant", chars: thought.length });
+    messages = [...messages, { role: "assistant", content: "", toolCalls: pending }];
+    trace = recordMessage(trace, { role: "assistant", chars: 0 });
     pending = [];
-    pendingThought = undefined;
   };
 
   // Pre-pass: index the last tool_result event so we can route it to the
@@ -111,7 +97,8 @@ export const projectResultsStage = (c: AssemblyCtx): AssemblyCtx => {
 
   for (const e of c.log.events) {
     if (e.kind === "thought") {
-      pendingThought = e.text;
+      // Thought events are recorded but never rendered on replay — see the
+      // flush() comment above.
     } else if (e.kind === "tool_called") {
       pending.push({ id: e.callId, name: e.tool, arguments: e.args });
     } else if (e.kind === "tool_result") {
@@ -166,7 +153,7 @@ export const projectResultsStage = (c: AssemblyCtx): AssemblyCtx => {
         projection = "full";
         full++;
       } else {
-        content = c.store.preview(e.ref, budget);
+        content = c.store.preview(e.ref, budget, { writeByRef });
         projection = "preview+ref";
         summarized++;
       }

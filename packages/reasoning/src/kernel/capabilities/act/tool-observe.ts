@@ -111,10 +111,13 @@ export interface ToolObserveConfig {
    *  omitted the primitive resolves ObservableLogger itself. */
   readonly emitLog?: (event: LogEvent) => Effect.Effect<void, never>;
   /**
-   * Phase E (E2) — when present WITH `verifierContext`, the primitive attaches a
-   * structured `VerificationResult` to the obsStep metadata (mirrors the kernel
-   * batch path). `verify()` is sync + pure (no LLM). Single path opts in only
-   * under `RA_TOOL_OBSERVE_SYMMETRY=1`. Absent ⇒ no verification (byte-identical).
+   * When present WITH `verifierContext`, the primitive attaches a structured
+   * `VerificationResult` to the obsStep metadata. `verify()` is sync + pure
+   * (no LLM). The kernel's batch tool-execution path always passes this; the
+   * single-call path never does (that symmetry was previously an opt-in
+   * mechanism, `RA_TOOL_OBSERVE_SYMMETRY`, removed 2026-09-15 — DELETE
+   * verdict, see wiki/Decisions/2026-09-15-experimental-flag-verdicts.md).
+   * Absent ⇒ no verification.
    */
   readonly verifier?: { readonly verify: (ctx: VerificationContext) => VerificationResult };
   /** Inputs the verifier consults — built from kernel state by the caller. */
@@ -591,10 +594,10 @@ export function executeToolAndObserve(
     const obsResult = makeObservationResult(toolName, exec.success, displayContent, {
       ...(exec.delegatedToolsUsed ? { delegatedToolsUsed: exec.delegatedToolsUsed } : {}),
     });
-    // Phase E (E2) — attach a structured VerificationResult when the caller
-    // opted in (kernel single path under RA_TOOL_OBSERVE_SYMMETRY=1). Mirrors
-    // the batch path's `defaultVerifier.verify(contextFromObservation(...))`.
-    // verify() is sync + pure; no LLM call. Absent ⇒ undefined (byte-identical).
+    // Attach a structured VerificationResult when the caller passes a
+    // verifier + context (the kernel's batch path always does; the single
+    // path never does — see the `verifier` field doc above). verify() is
+    // sync + pure; no LLM call. Absent ⇒ undefined.
     const verification =
       config.verifier && config.verifierContext
         ? config.verifier.verify(

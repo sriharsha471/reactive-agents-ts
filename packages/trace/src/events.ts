@@ -102,6 +102,8 @@ export interface RunCompletedEvent extends TraceEventBase {
   /** True iff `output` was clipped to the publisher's 64KB cap. */
   readonly outputTruncated?: boolean
   readonly error?: string
+  /** Raw termination reason (AgentCompleted.terminationReason) — e.g. "abstained", "max-iterations:5". */
+  readonly terminatedBy?: string
   readonly totalTokens: number
   readonly totalCostUsd: number
   readonly durationMs: number

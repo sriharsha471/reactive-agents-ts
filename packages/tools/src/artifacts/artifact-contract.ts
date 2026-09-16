@@ -20,7 +20,6 @@
 import { builtinTools } from "../skills/builtin.js";
 import { shellExecuteTool } from "../skills/shell-execution.js";
 import { dockerExecuteTool } from "../skills/docker-execution.js";
-import { writeResultToFileTool } from "../skills/write-result-to-file.js";
 
 /** What KIND of durable output a successful tool call produces (types.ts `produces`). */
 export type ProducesKind = "file" | "data" | "none";
@@ -40,8 +39,8 @@ export interface ArtifactFact {
 /**
  * The name→`produces` map, DERIVED from the registered tool definitions' own
  * `produces` field — not a hand-maintained name set. `builtinTools` is the
- * canonical file/data/http roster; shell/docker/write-result-to-file are
- * registered separately (not in that array) so they are added explicitly.
+ * canonical file/data/http roster; shell/docker are registered separately
+ * (not in that array) so they are added explicitly.
  * A tool that declares no `produces` contributes `"data"` (no artifact).
  */
 const PRODUCES_BY_NAME: ReadonlyMap<string, ProducesKind> = new Map(
@@ -49,7 +48,6 @@ const PRODUCES_BY_NAME: ReadonlyMap<string, ProducesKind> = new Map(
     ...builtinTools.map((t) => t.definition),
     shellExecuteTool,
     dockerExecuteTool,
-    writeResultToFileTool,
   ].map((d) => [d.name, d.produces ?? "data"] as const),
 );
 
@@ -203,7 +201,6 @@ export function extractArtifactFacts(
     case "write-file":
     case "fs-write":
     case "writefile":
-    case "write-result-to-file":
       return extractPathArgFacts(args);
     case "code-execute":
       return extractCodeFacts(args);

@@ -1,0 +1,163 @@
+{
+  "generatedAt": "2026-09-15T13:31:48.143Z",
+  "runs": [],
+  "sessionId": "real-world-full",
+  "sessionVersion": "1.0.0",
+  "gitSha": "31c97ae8",
+  "ablation": [],
+  "taskReports": [
+    {
+      "taskId": "c1-distributed-queue",
+      "modelVariantId": "claude-haiku-4-5-20251001",
+      "variantId": "ra-full",
+      "variantLabel": "RA Full Harness",
+      "runs": [
+        {
+          "runIndex": 0,
+          "dimensions": [
+            {
+              "dimension": "accuracy",
+              "score": 1
+            }
+          ],
+          "tokensUsed": 3930,
+          "durationMs": 23346.899696,
+          "status": "pass",
+          "output": "I'll design a comprehensive data model for a distributed task queue with duplicate prevention and at-least-once delivery guarantees. Let me provide a detailed architectural solution.\n\n## Distributed Task Queue Data Model\n\n### 1. **Core Entities & Fields**\n\n#### **Task Entity**\n```\nTask {\n  task_id: UUID (primary key)\n  idempotency_key: String (unique, for deduplication)\n  queue_name: String (routing)\n  payload: JSON (task data)\n  status: Enum (PENDING, PROCESSING, COMPLETED, FAILED, DEAD_LETTER)\n  priority: Integer (0-10, higher = more urgent)\n  created_at: Timestamp\n  scheduled_for: Timestamp (optional, for delayed tasks)\n  expires_at: Timestamp (task TTL)\n  retry_count: Integer (current attempt)\n  max_retries: Integer (max attempts allowed)\n  last_error: String (error message from last failure)\n  metadata: JSON (tags, context)\n}\n```\n\n#### **TaskExecution Entity** (Tracks each execution attempt)\n```\nTaskExecution {\n  execution_id: UUID (primary key)\n  task_id: UUID (foreign key)\n  worker_id: String (which worker picked it up)\n  attempt_number: Integer\n  started_at: Timestamp\n  completed_at: Timestamp (nullable)\n  status: Enum (STARTED, COMPLETED, FAILED, TIMEOUT)\n  result: JSON (execution output/result)\n  error_message: String (if failed)\n  execution_duration_ms: Integer\n  heartbeat_at: Timestamp (last heartbeat from worker)\n}\n```\n\n#### **DeduplicationRecord Entity** (Idempotency ledger)\n```\nDeduplicationRecord {\n  idempotency_key: String (primary key)\n  task_id: UUID (foreign key)\n  status: Enum (PENDING, COMPLETED, FAILED)\n  result: JSON (cached result of completed task)\n  created_at: Timestamp\n  expires_at: Timestamp (TTL for cleanup)\n}\n```\n\n#### **Worker Entity** (Tracks worker health)\n```\nWorker {\n  worker_id: String (primary key)\n  queue_names: String[] (queues it processes)\n  status: Enum (HEALTHY, UNHEALTHY, DEAD)\n  last_heartbeat: Timestamp\n  current_task_id: UUID (nullable, task being processed)\n  tasks_processed: Integer (metrics)\n  tasks_failed: Integer (metrics)\n  registered_at: Timestamp\n}\n```\n\n#### **DeadLetterQueue Entity** (Failed tasks that exceeded retries)\n```\nDeadLetterQueue {\n  dlq_id: UUID (primary key)\n  task_id: UUID (foreign key)\n  reason: String (why it was moved to DLQ)\n  failed_at: Timestamp\n  last_execution: TaskExecution (reference)\n  metadata: JSON (context for manual intervention)\n}\n```\n\n---\n\n### 2. **Deduplication Strategy**\n\n#### **Idempotency Key Approach**\n```\nStrategy: Client-provided or derived idempotency_key\n  \n1. Client submits task with idempotency_key:\n   POST /tasks\n   {\n     \"idempotency_key\": \"user_123_transfer_456\",\n     \"queue_name\": \"payments\",\n     \"payload\": { \"amount\": 100, \"to_account\": \"789\" }\n   }\n\n2. Server checks DeduplicationRecord:\n   - If idempotency_key exists AND status=COMPLETED\n     → Return cached result (no new task created)\n   - If idempotency_key exists AND status=PENDING\n     → Return existing task_id (wait for completion)\n   - If NOT exists\n     → Create new Task + DeduplicationRecord with status=PENDING\n\n3. After task completes:\n   - Update DeduplicationRecord with result\n   - Set status=COMPLETED\n   - Subsequent requests with same key return cached result\n```\n\n#### **Database Indexes**\n```sql\n-- Deduplication lookup\nCREATE UNIQUE INDEX idx_dedup_key ON DeduplicationRecord(idempotency_key);\n\n-- Task status queries\nCREATE INDEX idx_task_status_queue ON Task(status, queue_name, priority);\n\n-- Worker task assignment\nCREATE INDEX idx_task_pending_scheduled ON Task(status, scheduled_for) \n  WHERE status IN ('PENDING', 'SCHEDULED');\n\n-- Cleanup queries\nCREATE INDEX idx_dedup_expires ON DeduplicationRecord(expires_at);\nCREATE INDEX idx_task_expires ON Task(expires_at);\n```\n\n---\n\n### 3. **Failure Handling & Retry Strategy**\n\n#### **Exponential Backoff with Jitter**\n```\nRetry Logic:\n  \n  max_retries: 5\n  base_delay: 1 second\n  max_delay: 300 seconds\n  \n  delay_ms = min(\n    base_delay * (2 ^ attempt_number) + random(0, jitter),\n    max_delay\n  )\n  \n  Example timeline:\n    Attempt 1: Immediate\n    Attempt 2: ~1-2 seconds\n    Attempt 3: ~2-4 seconds\n    Attempt 4: ~4-8 seconds\n    Attempt 5: ~8-16 seconds\n    Attempt 6: Move to DLQ (max_retries exceeded)\n```\n\n#### **Failure Handling Flow**\n```\nTask Execution Failure:\n  \n  1. Worker executes task → Exception thrown\n  \n  2. Catch exception:\n     - Log error to TaskExecution.error_message\n     - Set TaskExecution.status = FAILED\n     - Increment Task.retry_count\n  \n  3. Decision tree:\n     IF retry_count < max_retries:\n       - Calculate next_retry_time with exponential backoff\n       - Set Task.status = PENDING\n       - Set Task.scheduled_for = now + delay\n       - Release task back to queue\n     ELSE:\n       - Set Task.status = FAILED\n       - Create DeadLetterQueue entry\n       - Send alert/notification\n       - Preserve all execution history for debugging\n```\n\n#### **Timeout Detection**\n```\nWorker Heartbeat Mechanism:\n  \n  1. Worker picks up task:\n     - Create TaskExecution record\n     - Set heartbeat_at = now\n  \n  2. During execution:\n     - Worker sends heartbeat every 30 seconds\n     - Update TaskExecution.heartbeat_at\n  \n  3. Timeout detection (background job runs every 60 seconds):\n     IF (now - TaskExecution.heartbeat_at) > timeout_threshold:\n       - Assume worker crashed/hung\n       - Set TaskExecution.status = TIMEOUT\n       - Set Task.status = PENDING (if retry_count < max_retries)\n       - Increment Task.retry_count\n       - Mark Worker.status = UNHEALTHY\n       - Reassign task to healthy worker\n```\n\n---\n\n### 4. **Worker Crash Mid-Task Handling**\n\n#### **Crash Detection & Recovery**\n```\nScenario: Worker crashes while processing task_123\n\n1. DETECTION PHASE (60-second window):\n   - Background health monitor checks worker heartbeats\n   - Detects no heartbeat from worker_A for >60 seconds\n   - Queries TaskExecution where worker_id='worker_A' AND status='STARTED'\n   \n2. RECOVERY PHASE:\n   - For each orphaned TaskExecution:\n     a) Mark TaskExecution.status = TIMEOUT\n     b) Check Task.retry_count vs Task.max_retries\n     \n     IF retry_count < max_retries:\n       - Increment Task.retry_count\n       - Set Task.status = PENDING\n       - Clear Task.current_worker_id\n       - Task re-enters queue for reassignment\n       \n     IF retry_count >= max_retries:\n       - Set Task.status = FAILED\n       - Move to DeadLetterQueue\n   \n   c) Mark Worker.status = DEAD\n   d) Prevent reassignment to dead worker\n\n3. IDEMPOTENCY PROTECTION:\n   - If task was partially completed (e.g., payment processed):\n     * Idempotency key prevents duplicate execution",
+          "traceId": "01M2JM68KZPT199QM285RJX9FR",
+          "diagnosis": {
+            "honestyLabel": "honest-failure",
+            "honestyEvidence": "status=failure",
+            "failureModes": [],
+            "blindSpots": [
+              "intervention overlap-storms on real runs: ≤1 guard fired this run — too few to observe an overlap-storm (emitGuardFired is wired across the loop, not terminal-only)"
+            ]
+          },
+          "trust": "honest-failure",
+          "billedTokens": 5166,
+          "cacheReadTokens": 0
+        },
+        {
+          "runIndex": 1,
+          "dimensions": [
+            {
+              "dimension": "accuracy",
+              "score": 1
+            }
+          ],
+          "tokensUsed": 3941,
+          "durationMs": 25689.055254,
+          "status": "pass",
+          "output": "I'll design a comprehensive data model for a distributed task queue with duplicate prevention and at-least-once delivery guarantees. Let me provide a detailed architecture:\n\n## Distributed Task Queue Data Model\n\n### 1. **Core Entities**\n\n#### **Task**\n```\n{\n  task_id: UUID (primary key)\n  idempotency_key: String (unique, for deduplication)\n  queue_name: String (routing)\n  payload: JSON (task data)\n  status: Enum (PENDING, PROCESSING, COMPLETED, FAILED, DEAD_LETTER)\n  priority: Integer (0-10, higher = more urgent)\n  created_at: Timestamp\n  scheduled_at: Timestamp (when to execute)\n  expires_at: Timestamp (TTL for task)\n  retry_count: Integer (current attempt)\n  max_retries: Integer (max attempts allowed)\n  last_error: String (error message from last failure)\n  tags: Array<String> (for filtering/grouping)\n}\n```\n\n#### **TaskExecution** (audit trail & deduplication)\n```\n{\n  execution_id: UUID (primary key)\n  task_id: UUID (foreign key)\n  worker_id: String (which worker claimed it)\n  started_at: Timestamp\n  completed_at: Timestamp (null if still running)\n  status: Enum (STARTED, COMPLETED, FAILED, ABANDONED)\n  result: JSON (output of successful execution)\n  error: String (if failed)\n  execution_duration_ms: Integer\n  idempotency_token: String (matches Task.idempotency_key)\n}\n```\n\n#### **WorkerHeartbeat** (crash detection)\n```\n{\n  worker_id: String (primary key)\n  last_heartbeat_at: Timestamp\n  status: Enum (HEALTHY, UNHEALTHY, DEAD)\n  current_task_id: UUID (nullable, what it's working on)\n  total_tasks_processed: Integer\n  failed_tasks: Integer\n  metadata: JSON (worker version, capacity, etc.)\n}\n```\n\n#### **TaskLease** (distributed lock for processing)\n```\n{\n  lease_id: UUID (primary key)\n  task_id: UUID (foreign key, unique)\n  worker_id: String\n  acquired_at: Timestamp\n  expires_at: Timestamp (lease TTL, e.g., 5 minutes)\n  lease_version: Integer (for optimistic locking)\n  status: Enum (ACTIVE, RELEASED, EXPIRED)\n}\n```\n\n#### **DeduplicationCache** (fast lookup)\n```\n{\n  idempotency_key: String (primary key)\n  task_id: UUID\n  result: JSON (cached result if completed)\n  status: Enum (PENDING, COMPLETED, FAILED)\n  created_at: Timestamp\n  expires_at: Timestamp (TTL: 24-48 hours)\n}\n```\n\n#### **DeadLetterQueue**\n```\n{\n  dlq_id: UUID (primary key)\n  task_id: UUID\n  original_payload: JSON\n  reason: String (why it failed)\n  final_error: String\n  moved_at: Timestamp\n  retry_attempts: Integer\n}\n```\n\n---\n\n### 2. **Deduplication Strategy**\n\n**Idempotency Key Approach:**\n- Client provides `idempotency_key` when submitting a task\n- Check `DeduplicationCache` before creating a new task\n- If exists and COMPLETED: return cached result immediately\n- If exists and PENDING: return task_id, client can poll\n- If exists and FAILED: decide based on business logic (retry or return error)\n\n**Implementation Flow:**\n```\n1. Client submits task with idempotency_key\n2. Query DeduplicationCache(idempotency_key)\n3. If found:\n   - COMPLETED → return result (idempotent response)\n   - PENDING → return task_id (in progress)\n   - FAILED → return error or allow retry\n4. If not found:\n   - Create Task record\n   - Insert into DeduplicationCache with PENDING status\n   - Return task_id\n5. On task completion:\n   - Update DeduplicationCache with result\n   - Set status to COMPLETED\n```\n\n**Database Indexes:**\n- `Task(idempotency_key)` - unique index for fast dedup\n- `DeduplicationCache(idempotency_key)` - unique, with TTL\n- `Task(status, scheduled_at)` - for polling pending tasks\n- `TaskExecution(task_id, created_at)` - audit trail\n\n---\n\n### 3. **Failure Handling & Retry Strategy**\n\n**Retry Logic:**\n```\n{\n  initial_retry_delay: 1 second\n  max_retry_delay: 3600 seconds (1 hour)\n  backoff_strategy: EXPONENTIAL (2^attempt_count)\n  max_retries: 3 (configurable per task)\n  jitter: true (prevent thundering herd)\n}\n\nRetry Schedule Example:\n- Attempt 1 (initial): immediate\n- Attempt 2 (fail): 1 second + jitter\n- Attempt 3 (fail): 2 seconds + jitter\n- Attempt 4 (fail): 4 seconds + jitter\n- After max_retries: move to DeadLetterQueue\n```\n\n**Failure Handling Flow:**\n```\n1. Worker picks up task, acquires TaskLease\n2. Executes task\n3. On failure:\n   a. Increment retry_count\n   b. If retry_count < max_retries:\n      - Calculate next_scheduled_at = now + backoff_delay\n      - Update Task(status=PENDING, scheduled_at=next_scheduled_at)\n      - Release TaskLease\n      - Log error in TaskExecution\n   c. If retry_count >= max_retries:\n      - Update Task(status=FAILED)\n      - Move to DeadLetterQueue\n      - Send alert/notification\n      - Release TaskLease\n4. Update DeduplicationCache(status=FAILED)\n```\n\n---\n\n### 4. **Worker Crash Handling**\n\n**Crash Detection Mechanism:**\n\n**Step 1: Heartbeat Monitoring**\n```\nWorker sends heartbeat every 10 seconds:\n- Update WorkerHeartbeat(last_heartbeat_at = now)\n- Include current_task_id being processed\n\nMonitoring service checks every 30 seconds:\n- If last_heartbeat_at < now - 60 seconds → mark UNHEALTHY\n- If last_heartbeat_at < now - 180 seconds → mark DEAD\n```\n\n**Step 2: Lease Expiration**\n```\nWhen worker crashes mid-task:\n1. TaskLease.expires_at passes (e.g., 5 minutes)\n2. Scheduler detects expired lease\n3. Checks WorkerHeartbeat status\n4. If worker is DEAD:\n   a. Release TaskLease (set status=EXPIRED)\n   b. Reset Task(status=PENDING)\n   c. Increment retry_count\n   d. Reschedule with backoff\n5. Create TaskExecution record with status=ABANDONED\n```\n\n**Step 3: Task State Recovery**\n```\nRecovery Process:\n1. Identify orphaned tasks:\n   SELECT Task WHERE status=PROCESSING \n   AND task_id NOT IN (SELECT task_id FROM TaskLease WHERE status=ACTIVE)\n   AND last_heartbeat_at < now - lease_ttl\n\n2. For each orphaned task:\n   a. If retry_count < max_retries:\n      - Reset to PENDING\n      - Schedule with exponential backoff\n      - Log recovery event\n   b. Else:\n      - Move to DeadLetterQueue\n      - Alert operations\n\n3. Update DeduplicationCache:\n   - If task was PROCESSING → keep as PENDING\n   - Preserve original idempotency_key\n```\n\n**Step 4: Idempotent Execution**\n```\nEven if task executes twice (due to race condition):\n1. Worker A: acquires lease, starts execution\n2. Worker A crashes\n3. Lease expires, task re-queued\n4. Worker B: acquires lease, executes task\n5. Worker A recovers, tries to complete execution",
+          "traceId": "01M2JM6ZDM694EBNN25402R6PT",
+          "diagnosis": {
+            "honestyLabel": "honest-failure",
+            "honestyEvidence": "status=failure",
+            "failureModes": [],
+            "blindSpots": [
+              "intervention overlap-storms on real runs: ≤1 guard fired this run — too few to observe an overlap-storm (emitGuardFired is wired across the loop, not terminal-only)"
+            ]
+          },
+          "trust": "honest-failure",
+          "billedTokens": 5184,
+          "cacheReadTokens": 0
+        },
+        {
+          "runIndex": 2,
+          "dimensions": [
+            {
+              "dimension": "accuracy",
+              "score": 1
+            }
+          ],
+          "tokensUsed": 3931,
+          "durationMs": 23602.235058,
+          "status": "pass",
+          "output": "I'll design a comprehensive data model for a distributed task queue with duplicate prevention and at-least-once delivery guarantees. Let me provide a detailed architectural design:\n\n## Distributed Task Queue Data Model\n\n### 1. **Key Entities & Fields**\n\n#### **Task Entity**\n```\nTask {\n  task_id: UUID (primary key)\n  idempotency_key: String (unique, for deduplication)\n  queue_name: String (routing)\n  payload: JSON (task data)\n  status: Enum (PENDING, PROCESSING, COMPLETED, FAILED, DEAD_LETTER)\n  priority: Integer (0-10, for priority queue)\n  \n  // Execution tracking\n  created_at: Timestamp\n  scheduled_at: Timestamp (when to execute)\n  started_at: Timestamp (when worker picked it up)\n  completed_at: Timestamp\n  \n  // Retry & failure handling\n  retry_count: Integer (current attempt)\n  max_retries: Integer (max allowed attempts)\n  last_error: String (error message)\n  next_retry_at: Timestamp (exponential backoff)\n  \n  // Worker tracking\n  assigned_worker_id: String (worker processing it)\n  worker_lease_expires_at: Timestamp (heartbeat timeout)\n  \n  // Metadata\n  result: JSON (output of successful execution)\n  tags: Array<String> (for filtering/monitoring)\n  timeout_seconds: Integer (max execution time)\n}\n```\n\n#### **Idempotency Record Entity**\n```\nIdempotencyRecord {\n  idempotency_key: String (primary key)\n  task_id: UUID (foreign key)\n  client_id: String (which client submitted)\n  result: JSON (cached result for duplicate requests)\n  created_at: Timestamp\n  expires_at: Timestamp (TTL for cleanup, e.g., 24 hours)\n}\n```\n\n#### **Worker Entity**\n```\nWorker {\n  worker_id: String (primary key, UUID or hostname-based)\n  status: Enum (HEALTHY, UNHEALTHY, DEAD)\n  \n  // Heartbeat tracking\n  last_heartbeat_at: Timestamp\n  heartbeat_interval_seconds: Integer\n  \n  // Capacity\n  max_concurrent_tasks: Integer\n  current_task_count: Integer\n  \n  // Metadata\n  hostname: String\n  version: String (worker code version)\n  registered_at: Timestamp\n  tags: Array<String> (capabilities/skills)\n}\n```\n\n#### **Task Execution Log Entity**\n```\nTaskExecutionLog {\n  log_id: UUID (primary key)\n  task_id: UUID (foreign key)\n  worker_id: String (which worker attempted)\n  attempt_number: Integer\n  \n  // Execution details\n  started_at: Timestamp\n  ended_at: Timestamp\n  duration_ms: Integer\n  status: Enum (SUCCESS, FAILURE, TIMEOUT, CRASH)\n  \n  // Error tracking\n  error_type: String\n  error_message: String\n  stack_trace: String\n  \n  // State snapshots (for recovery)\n  checkpoint_data: JSON (partial progress if supported)\n}\n```\n\n#### **Dead Letter Queue Entity**\n```\nDeadLetterTask {\n  dlq_id: UUID (primary key)\n  task_id: UUID (foreign key)\n  original_queue: String\n  reason: String (why it failed)\n  failed_at: Timestamp\n  attempts_made: Integer\n  last_error: String\n}\n```\n\n---\n\n### 2. **Deduplication Strategy**\n\n#### **Idempotency Key Approach**\n```\n// Client provides or system generates idempotency_key\nidempotency_key = hash(client_id + request_signature + timestamp_window)\n\n// Deduplication logic:\n1. Client submits task with idempotency_key\n2. Check IdempotencyRecord table:\n   - If exists AND task is COMPLETED → return cached result immediately\n   - If exists AND task is PROCESSING → wait/poll for result\n   - If exists AND task is FAILED → decide: retry or return error\n3. If not exists:\n   - Create Task record\n   - Create IdempotencyRecord (status: PENDING)\n   - Enqueue to task queue\n4. Return task_id to client\n```\n\n#### **Database Implementation**\n```sql\n-- Unique constraint on idempotency_key prevents race conditions\nCREATE TABLE idempotency_records (\n  idempotency_key VARCHAR(255) PRIMARY KEY,\n  task_id UUID NOT NULL UNIQUE,\n  client_id VARCHAR(255) NOT NULL,\n  result JSONB,\n  created_at TIMESTAMP NOT NULL,\n  expires_at TIMESTAMP NOT NULL,\n  INDEX (client_id, created_at)\n);\n\n-- Prevent duplicate task inserts\nCREATE TABLE tasks (\n  task_id UUID PRIMARY KEY,\n  idempotency_key VARCHAR(255) UNIQUE NOT NULL,\n  status VARCHAR(50) NOT NULL,\n  ...\n  INDEX (status, scheduled_at),\n  INDEX (queue_name, status),\n  FOREIGN KEY (idempotency_key) REFERENCES idempotency_records\n);\n```\n\n---\n\n### 3. **Failure Handling Strategy**\n\n#### **Exponential Backoff Retry Logic**\n```\nretry_delay = base_delay * (exponential_factor ^ attempt_number) + jitter\n\nExample:\n- Attempt 1 fails: retry after 1 second\n- Attempt 2 fails: retry after 2 seconds\n- Attempt 3 fails: retry after 4 seconds\n- Attempt 4 fails: retry after 8 seconds\n- ... up to max_retries\n\nConfiguration per task:\n{\n  max_retries: 5,\n  base_delay_ms: 1000,\n  exponential_factor: 2,\n  max_delay_ms: 300000 (5 minutes cap),\n  jitter_ms: 0-1000\n}\n```\n\n#### **Failure Handling Flow**\n```\nWorker executes task:\n  ├─ SUCCESS\n  │  └─ Update Task.status = COMPLETED\n  │     Update Task.result = output\n  │     Update IdempotencyRecord.result = output\n  │     Delete from active queue\n  │\n  ├─ TIMEOUT (exceeded timeout_seconds)\n  │  └─ Mark as FAILED\n  │     Increment retry_count\n  │     Schedule next_retry_at\n  │     Log error\n  │\n  ├─ RECOVERABLE ERROR (network, temporary)\n  │  └─ Increment retry_count\n  │     If retry_count < max_retries:\n  │        Calculate next_retry_at with backoff\n  │        Update status = PENDING\n  │     Else:\n  │        Move to DEAD_LETTER\n  │        Alert monitoring\n  │\n  ├─ NON-RECOVERABLE ERROR (validation, config)\n  │  └─ Move directly to DEAD_LETTER\n  │     Don't retry\n  │     Alert with context\n  │\n  └─ CRASH (worker dies mid-execution)\n     └─ Handled by lease expiration (see below)\n```\n\n---\n\n### 4. **Worker Crash Handling**\n\n#### **Lease-Based Recovery Mechanism**\n```\nWhen worker picks up task:\n1. Set Task.assigned_worker_id = worker_id\n2. Set Task.worker_lease_expires_at = now() + lease_duration\n3. Worker holds lease by sending heartbeats every heartbeat_interval\n\nHeartbeat mechanism:\n- Worker sends: {worker_id, task_id, checkpoint_data}\n- System updates: Task.worker_lease_expires_at = now() + lease_duration\n- If no heartbeat for lease_duration → task is orphaned\n\nCrash detection (background job every 30 seconds):\nSELECT tasks WHERE status = PROCESSING \n  AND worker_lease_expires_at < NOW()\n  AND assigned_worker_id NOT IN (healthy_workers)\n\nFor each orphaned task:\n  1. Check TaskExecutionLog for checkpoint_data\n  2. If checkpoint exists:\n     - Resume from checkpoint (if task supports it)\n     - Reset assigned_worker_id = NULL\n     - Set status = PENDING",
+          "traceId": "01M2JM7RGTPF5P2C9T0JV3F7F6",
+          "diagnosis": {
+            "honestyLabel": "honest-failure",
+            "honestyEvidence": "status=failure",
+            "failureModes": [],
+            "blindSpots": [
+              "intervention overlap-storms on real runs: ≤1 guard fired this run — too few to observe an overlap-storm (emitGuardFired is wired across the loop, not terminal-only)"
+            ]
+          },
+          "trust": "honest-failure",
+          "billedTokens": 5169,
+          "cacheReadTokens": 0
+        }
+      ],
+      "meanScores": [
+        {
+          "dimension": "accuracy",
+          "score": 1
+        },
+        {
+          "dimension": "reliability",
+          "score": 1
+        }
+      ],
+      "variance": 0,
+      "meanTokens": 3934,
+      "meanBilledTokens": 5173,
+      "meanCacheReadTokens": 0,
+      "meanDurationMs": 24213,
+      "passRate": 1,
+      "solveRate": 1,
+      "passK": [
+        {
+          "k": 1,
+          "estimate": 1
+        },
+        {
+          "k": 2,
+          "estimate": 1
+        }
+      ]
+    }
+  ],
+  "dimensionSummary": [
+    {
+      "dimension": "accuracy",
+      "byVariant": [
+        {
+          "variantId": "ra-full",
+          "meanScore": 1
+        }
+      ]
+    },
+    {
+      "dimension": "reliability",
+      "byVariant": [
+        {
+          "variantId": "ra-full",
+          "meanScore": 1
+        }
+      ]
+    }
+  ],
+  "reproducibility": {
+    "judgeModelSha": "unknown-no-judge-configured",
+    "judgeCodeSha": "unknown-no-judge-configured",
+    "runId": "run-1789479035412-j09wemw9",
+    "replayCommand": "bun run --cwd packages/benchmarks bench --session real-world-full --run-id run-1789479035412-j09wemw9"
+  },
+  "inconclusiveCells": [],
+  "partialMeasurement": false,
+  "passKByVariant": [
+    {
+      "variantId": "ra-full",
+      "passK": [
+        {
+          "k": 1,
+          "estimate": 1
+        },
+        {
+          "k": 2,
+          "estimate": 1
+        }
+      ]
+    }
+  ]
+}

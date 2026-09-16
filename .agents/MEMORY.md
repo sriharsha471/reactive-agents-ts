@@ -2,16 +2,44 @@
 
 **For any AI coding agent (Claude/Cursor/Codex/Aider/etc.).** This file is a repository-local operational cache, not an authority above current source, tests, or canonical wiki specs. Historical detail belongs in [MEMORY-ARCHIVE.md](MEMORY-ARCHIVE.md). ▶ = active/open, ✅ = shipped, ⚠️ = caution, 📍 = audit/reference.
 
-## Current Status (2026-09-05)
+## Current Status (2026-09-15)
 
-**`VERSION=0.16.0`** (VERSION file, live on npm), **34 packages** in `packages/` (32 published, 2 private: benchmarks, judge-server — all counts re-verified 2026-09-08). Local `main` == `origin/main` (fast-forward confirmed, `1a995a2d`). Suite 9,250 tests (9,221 pass/25 skip/4 todo/0 fail) across 1,203 files — re-ran 2026-09-08, exact match, no drift; build 37/37; `release:dry 0.16.0` clean.
-**Last commit:** `1a995a2d` (revert of a README/hero intro wording change). v0.16.0 released same day, along with PR #202 (path-traversal corrective-rejection guard) merged. Current open work is recorded in `wiki/Architecture/DEBT-REGISTER.md` and the active plans index. Do not re-derive current debt from the historical entries below.
+**`VERSION=0.16.0`** (VERSION file, live on npm), **34 packages** in `packages/` (32 published, 2 private: benchmarks, judge-server). Local `main` == `origin/main` as of the last v0.16.0 release; a separate branch `wave/wire-or-delete-2026-09` (HEAD `84d43fcf`) carries 9 unreleased tasks (doc truth pass, keyless-refusal security fix, run/trace outcome-truth fixes, strategy-switch ledger fix, 3 experimental flags deleted, wither-proof census) — gate-clean, NOT yet merged/tagged. Suite on that branch: 9,294 tests (9,264 pass/25 skip/4 todo/**1 fail**) across 1,211 files — grew from the 9,250 pre-wave baseline as expected; the 1 fail is the known, pre-existing `as-unknown-as` cast-site ceiling gap (79 vs 78, confirmed pre-existing via `git stash`, not this wave's fault). build 72/72 (turbo build+typecheck); all 21 `check-*.sh` gates green; `docs:examples:check` clean; `release:dry 0.16.1` clean. See [[project_wire_or_delete_wave_2026_09_15]] (Claude memory) for full detail.
+**Last commit (main):** `1a995a2d` (revert of a README/hero intro wording change). v0.16.0 released same day, along with PR #202 (path-traversal corrective-rejection guard) merged. Current open work is recorded in `wiki/Architecture/DEBT-REGISTER.md` and the active plans index. Do not re-derive current debt from the historical entries below.
 **Release-flow correction (2026-09-05):** always `git push origin main` before tagging, even though this repo's convention is normally "push at release time" — `publish.yml`'s post-publish sync resets to `origin/main` and can't carry a tag's own ancestry if main lags behind. CI now has a preflight guard (`publish.yml` "Guard — origin/main must already contain this release"); see `.claude/skills/prepare-release/SKILL.md` Step 7.
 **Canonical docs, priority order:** `wiki/Architecture/Specs/09-UNIFIED-PROGRAM.md` (sequencing) > `08-AGENTIC-OS-NORTH-STAR.md` v6.0 (arc content) > `Design-Specs/2026-07-11-harness-north-star-architecture.md` (ratified). **Canonical debt ledger = `wiki/Architecture/DEBT-REGISTER.md`** — verdict taxonomy (PROVEN/SILENT/ORPHAN/INERT/FALSE), §1 ratchet counts only go down. Do not write a new north-star doc — amend 09.
 **Stale references confirmed dead:** `AUDIT-overhaul-2026.md` no longer exists anywhere in the repo — superseded by DEBT-REGISTER.md. `wiki/Architecture/Specs/04-PROJECT-STATE.md` and `05-DESIGN-NORTH-STAR.md` (verified 2026-09-05: **no longer exist at that path** — `04-PROJECT-STATE.md` moved to `_archive/`; a public docs FAQ page linking the old path 404'd and was fixed to point at `ROADMAP.md` instead).
 **Repo-workflow reminder:** this repo normally holds unreleased work on local `main`, unpushed, until a release/tag event — do NOT assume `origin/main` reflects current state without checking, and do NOT open a GitHub PR against `origin/main` for interim work. **Exception (2026-09-05): always push `main` before tagging** — see Current Status above.
 
 **2026-08-19 → 2026-09-05: Halopedia-prototype DX gaps — RESOLVED (verified 2026-09-05).** Every item the 2026-08-19 Halopedia prototype flagged has shipped: `defineTool` output schema (`b2f10ec8`), `defineToolset` (`8c00756b`), `searchThenFetch`/`resolveThenRetrieve`/`boundedMap` research primitives (`c00b80c0`,`23d3a205`), `testTool`/`mockFetchOnce` test helpers (`89925778`), `withToolObservability`/`withToolRetry` envelope helpers (`9809cae2`), a `verifyCitations` chat option (`ChatOptions`), and canonical Bun + Node-portable chat-session examples (`496b0bb6`, `e58aea55`). Not covered: a dedicated `compare` orchestration tool (only research-fetch primitives shipped, not a comparison helper specifically) — low priority, no open tracking item.
+
+## Projects — Sep 2026
+
+**2026-09-15: Wire-or-delete hardening wave (`96f10a22..84d43fcf`, 9 tasks, branch `wave/wire-or-delete-2026-09`, not yet merged/tagged).**
+Doc truth pass (Task 0); provider env config made lazy + a real
+**keyless-refusal security fix** — compat LLM clients previously could
+silently borrow another provider's API key when their own env var was
+unset, now refused (Task 1, `6c9682d2`); `write_result_to_file` hint gated
+to only advertise when registered (Task 2, `31c97ae8`); `run-completed`
+trace now carries real cost + termination reason (Task 3, `c79e2063`);
+`runStream()`/`.collect()` outcome parity with `run()` (Task 4, `be8ce0a8`);
+strategy-switch handoff minted as a ledger fact, closing
+`ORPHAN_BASELINE=("handoff")` — **and a real bug found along the way**: the
+prior strategy's entire ledger was silently dropped on every switch, not
+just the handoff write (Task 5, `cfc3126b`); 3 experimental flags measured
+zero-lift and **deleted** (`RA_OVERHAUL`, `RA_THOUGHT_CONTINUITY`,
+`RA_TOOL_OBSERVE_SYMMETRY`), 2 kept opt-in (`RA_TOOL_INDEX`,
+`RA_RATIONALE_AUDIT` — insufficient measurement power, not non-viability)
+(Task 6/6b, `ad04e1b8`); opt-in demand-driven `num_ctx` for Ollama (Task 7,
+`90a13519`); wither-proof census gate classifying all 85 public builder
+withers (48 PROVEN/32 UNOBSERVABLE-DETERMINISTIC/5 INFRA), batch 1
+behavioral seam tests shipped, batches 2-4 queued as backlog (Task 8,
+`84d43fcf`). Task 9 (wave close, doc-only): full gate sweep with `.env`
+aside — clean except the known pre-existing `as-unknown-as` ceiling gap;
+regenerated a stale North Star gate baseline (direct correct consequence of
+Task 3's fix) with a `BASELINE-UPDATE:` commit trailer per
+`scripts/gate-update.ts`'s own convention. Open: wither batches 2-4,
+`as-unknown-as` ceiling gap, τ-bench bridge (tabled, unrelated).
 
 ## Projects — Aug 2026
 

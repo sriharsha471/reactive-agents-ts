@@ -263,6 +263,83 @@ function countAsUnknownAs(file: string): Hit[] {
   return hits;
 }
 
+// ─── packages/*/tests ceiling (final fix wave, Fix 2) ───────────────────────
+//
+// The `packages/*/src` ceiling above never saw `packages/*/tests` at all — it
+// only walks each package's `src/` tree. The wave's own plan text called the
+// "no NEW `as unknown as`" constraint repo-wide, but nothing enforced that in
+// the tests scope: four new casts landed in
+// `packages/reasoning/tests/strategy-switch-handoff-ledger.test.ts` (a typed
+// `KernelHooks`/`KernelRunOptions`/`KernelInput`/`KernelContext` fixture, same
+// shape as the sanctioned `… as unknown as KernelInput` precedent already
+// bumped into the `src` ceiling on 2026-09-10) and nothing failed, because
+// nothing was looking. Remedy chosen (of the two offered): make the tests
+// scope a visible, explicit, ratcheted gate — same shape as the `src` ceiling
+// — rather than build a typed fixture helper for a 4-site, test-only cast
+// (the KernelHooks/KernelContext shapes require a full `ToolServiceInstance`
+// Option + `ContextProfile` + `ToolCallingDriver` to construct honestly,
+// which is disproportionate for 4 fixture objects that exist only to drive
+// `applyStrategySwitch` in one test file).
+//
+// Baseline at this fix (2026-09-15): 237 sites across `packages/*/tests`
+// (plural directory name only — sibling `packages/*/test` singular-named
+// dirs, e.g. `runtime/test`, `trace/test`, are the `src`-ceiling's existing
+// colocated-test territory and are intentionally out of scope here to avoid
+// double-counting). This INCLUDES the 4 new sites this fix is accepting, not
+// hiding — 233 was the count immediately before them. Like the `src`
+// ceiling, this may only shrink going forward; a package growing its cast
+// count without a bump fails loudly instead of silently.
+const TESTS_CEILING = 237;
+
+function walkAsUnknownAsIn(root: string): Hit[] {
+  const hits: Hit[] = [];
+  try {
+    const st = statSync(root);
+    if (!st.isDirectory()) return hits;
+  } catch {
+    return hits;
+  }
+  for (const file of listTsFiles(root)) {
+    hits.push(...countAsUnknownAs(file));
+  }
+  return hits;
+}
+
+describe("`as unknown as` cast-site ceiling — packages/*/tests", () => {
+  it(`\`as unknown as\` sites stay ≤ ${TESTS_CEILING} across packages/*/tests`, () => {
+    const allHits: Hit[] = [];
+    let pkgEntries: string[];
+    try {
+      pkgEntries = readdirSync(PACKAGES_ROOT);
+    } catch {
+      pkgEntries = [];
+    }
+    for (const pkg of pkgEntries) {
+      allHits.push(...walkAsUnknownAsIn(join(PACKAGES_ROOT, pkg, "tests")));
+    }
+
+    if (allHits.length > TESTS_CEILING) {
+      const sample = allHits
+        .slice(0, 40)
+        .map((h) => `  ${h.file.replace(REPO_ROOT + "/", "")}:${h.line} — ${h.snippet}`)
+        .join("\n");
+      const msg =
+        `Found ${allHits.length} \`as unknown as\` sites in packages/*/tests ` +
+        `(ceiling: ${TESTS_CEILING}).\n` +
+        `Either:\n` +
+        `  1. Route the new fixture through a typed test-double helper ` +
+        `(see packages/reasoning/src/testing/tool-service-mock.ts for the ` +
+        `precedent), OR\n` +
+        `  2. Design the cast out, OR\n` +
+        `  3. If it is a documented test-fixture widening, raise ` +
+        `TESTS_CEILING in this test with a one-line rationale.\n\n` +
+        `First ${Math.min(40, allHits.length)} sites:\n${sample}`;
+      throw new Error(msg);
+    }
+    expect(allHits.length).toBeLessThanOrEqual(TESTS_CEILING);
+  }, 30000);
+});
+
 describe("WS-5b — `as unknown as` cast-site ceiling", () => {
   it(`\`as unknown as\` sites stay ≤ ${CEILING} across packages/*/src`, () => {
     const allHits: Hit[] = [];

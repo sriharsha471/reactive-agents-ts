@@ -161,13 +161,12 @@ Every key of `AgentConfig`, its type, and whether it is required. This table is
 | `reasoning.harness.assemblyDebug` | `boolean` | no |  |
 | `reasoning.harness.auditRationale` | `boolean` | no |  |
 | `reasoning.harness.lazyDisclosure` | `boolean` | no |  |
+| `reasoning.harness.numCtxPolicy` | `fixed` \| `demand` | no |  |
 | `reasoning.harness.promptDumpPathPrefix` | `string` | no |  |
 | `reasoning.harness.recencyBudgetChars` | `number` | no |  |
-| `reasoning.harness.thoughtContinuity` | `boolean` | no |  |
 | `reasoning.harness.toolDiscovery` | `boolean` | no |  |
 | `reasoning.harness.toolIndex` | `boolean` | no |  |
 | `reasoning.harness.toolIndexMaxEntries` | `number` | no |  |
-| `reasoning.harness.toolObserveSymmetry` | `boolean` | no |  |
 | `reasoning.harness.toolResultBudgetChars` | `number` | no |  |
 | `reasoning.harness.treeOfThoughtExploreBudgetMs` | `number` | no |  |
 | `reasoning.harness.verboseRules` | `boolean` | no |  |

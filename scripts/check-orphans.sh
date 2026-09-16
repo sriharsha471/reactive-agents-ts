@@ -34,15 +34,13 @@ LEDGER_FILE="${2:-$ROOT/packages/reasoning/src/kernel/ledger/run-ledger.ts}"
 LEDGER_BASE="$(basename "$LEDGER_FILE")"
 
 # Known declared-but-unwritten kinds. RATCHET: this list may only SHRINK.
-#   handoff — the read/render/compaction-protect path is real (standing-frame.ts
-#   filters + renders it; compaction.ts protects it) but no writer mints it yet.
-#   The intended cross-strategy context handoff ("carried context never
-#   renders", audit 03-F5) awaits its emit in a later feature wave (a default-on
-#   prompt change that must be bench-gated, not wired blind here). Tracked, not
-#   enshrined — delete this entry the moment a writer lands.
-ORPHAN_BASELINE=(
-  "handoff"
-)
+#   (empty) — `handoff` was the sole entry (audit 03-F5): the read/render/
+#   compaction-protect path was real (standing-frame.ts filters + renders it;
+#   compaction.ts protects it) but nothing minted one. Wired 2026-09-15
+#   (Task 5, wire-or-delete-hardening-wave): `applyStrategySwitch`
+#   (strategy-switch.ts) now calls `recordHandoff` (kernel/ledger/emit.ts) on
+#   every strategy switch — deleted from the baseline, not shrunk further.
+ORPHAN_BASELINE=()
 
 is_baselined() {
   local k="$1"

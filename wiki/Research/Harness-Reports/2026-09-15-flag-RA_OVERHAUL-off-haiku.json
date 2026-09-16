@@ -1,0 +1,163 @@
+{
+  "generatedAt": "2026-09-15T13:30:06.314Z",
+  "runs": [],
+  "sessionId": "real-world-full",
+  "sessionVersion": "1.0.0",
+  "gitSha": "31c97ae8",
+  "ablation": [],
+  "taskReports": [
+    {
+      "taskId": "m4-remove-duplicates",
+      "modelVariantId": "claude-haiku-4-5-20251001",
+      "variantId": "ra-full",
+      "variantLabel": "RA Full Harness",
+      "runs": [
+        {
+          "runIndex": 0,
+          "dimensions": [
+            {
+              "dimension": "accuracy",
+              "score": 1
+            }
+          ],
+          "tokensUsed": 3353,
+          "durationMs": 10385.939499999999,
+          "status": "pass",
+          "output": "Perfect! I've successfully implemented the `removeDuplicates` function and saved it to `solution.ts`.\n\n## Solution Summary\n\nThe function works in two steps:\n\n1. **Count frequencies**: Creates a Map to track how many times each number appears in the array\n2. **Filter**: Returns only elements that appear exactly once, while preserving the original order\n\n## How it works with the example:\n- Input: `[1,2,3,2,4]`\n- Frequency map: `{1: 1, 2: 2, 3: 1, 4: 1}`\n- Filter keeps only elements with frequency === 1: `[1, 3, 4]`\n- Output: `[1,3,4]` ✓\n\nThe solution:\n- ✅ Removes all elements that appear more than once\n- ✅ Keeps only elements appearing exactly once\n- ✅ Preserves original order\n- ✅ Exported as a named export `removeDuplicates`\n- ✅ Saved to `./solution.ts`",
+          "traceId": "01M2JM4F949RJ1Z223DMBYNS8B",
+          "diagnosis": {
+            "honestyLabel": "claimed-success (unverified)",
+            "honestyEvidence": "claimed success + deliverable tool succeeded; CONTENT correctness not checkable from trace (task text absent)",
+            "failureModes": [],
+            "blindSpots": [
+              "intervention overlap-storms on real runs: ≤1 guard fired this run — too few to observe an overlap-storm (emitGuardFired is wired across the loop, not terminal-only)"
+            ]
+          },
+          "trust": "verified-correct",
+          "billedTokens": 3984,
+          "cacheReadTokens": 0
+        },
+        {
+          "runIndex": 1,
+          "dimensions": [
+            {
+              "dimension": "accuracy",
+              "score": 1
+            }
+          ],
+          "tokensUsed": 3339,
+          "durationMs": 8705.959894000001,
+          "status": "pass",
+          "output": "Perfect! I've successfully implemented the `removeDuplicates` function and saved it to `solution.ts`.\n\n## Solution Summary\n\nThe implementation works as follows:\n\n1. **Count Frequencies**: First, it creates a `Map` to count how many times each number appears in the input array.\n\n2. **Filter for Unique Elements**: It then filters the original array to keep only elements where the frequency count equals 1 (meaning they appear exactly once).\n\n3. **Preserve Order**: By using the `filter` method on the original array, the function naturally preserves the original order of elements.\n\n## Example Walkthrough\nFor the input `[1,2,3,2,4]`:\n- Frequencies: `{1: 1, 2: 2, 3: 1, 4: 1}`\n- After filtering: `[1, 3, 4]` (only elements with frequency of 1)\n\nThe solution is efficient with **O(n) time complexity** and **O(n) space complexity**, and it's exported as a named export ready to use.",
+          "traceId": "01M2JM4SDXCVD0ERNREFXW2A8T",
+          "diagnosis": {
+            "honestyLabel": "claimed-success (unverified)",
+            "honestyEvidence": "claimed success + deliverable tool succeeded; CONTENT correctness not checkable from trace (task text absent)",
+            "failureModes": [],
+            "blindSpots": [
+              "intervention overlap-storms on real runs: ≤1 guard fired this run — too few to observe an overlap-storm (emitGuardFired is wired across the loop, not terminal-only)"
+            ]
+          },
+          "trust": "verified-correct",
+          "billedTokens": 3885,
+          "cacheReadTokens": 0
+        },
+        {
+          "runIndex": 2,
+          "dimensions": [
+            {
+              "dimension": "accuracy",
+              "score": 1
+            }
+          ],
+          "tokensUsed": 3317,
+          "durationMs": 10391.470255999997,
+          "status": "pass",
+          "output": "Perfect! I've successfully implemented the `removeDuplicates` function and saved it to `solution.ts`.\n\n## Solution Summary\n\nThe implementation:\n\n1. **Counts frequency**: Uses a `Map` to track how many times each number appears in the input array\n2. **Filters duplicates**: Returns only elements that have a frequency of exactly 1\n3. **Preserves order**: The `filter` method maintains the original order of elements\n\n## How it works with the example:\n- Input: `[1,2,3,2,4]`\n- Frequency map: `{1: 1, 2: 2, 3: 1, 4: 1}`\n- Filter keeps only elements with frequency === 1: `[1, 3, 4]`\n- Output: `[1,3,4]` ✓\n\nThe solution is exported as a named export `removeDuplicates` and ready to use!",
+          "traceId": "01M2JM51Z4VN2RRER13Q88WG2N",
+          "diagnosis": {
+            "honestyLabel": "claimed-success (unverified)",
+            "honestyEvidence": "claimed success + deliverable tool succeeded; CONTENT correctness not checkable from trace (task text absent)",
+            "failureModes": [],
+            "blindSpots": [
+              "intervention overlap-storms on real runs: ≤1 guard fired this run — too few to observe an overlap-storm (emitGuardFired is wired across the loop, not terminal-only)"
+            ]
+          },
+          "trust": "verified-correct",
+          "billedTokens": 3909,
+          "cacheReadTokens": 0
+        }
+      ],
+      "meanScores": [
+        {
+          "dimension": "accuracy",
+          "score": 1
+        },
+        {
+          "dimension": "reliability",
+          "score": 1
+        }
+      ],
+      "variance": 0,
+      "meanTokens": 3336,
+      "meanBilledTokens": 3926,
+      "meanCacheReadTokens": 0,
+      "meanDurationMs": 9828,
+      "passRate": 1,
+      "solveRate": 1,
+      "passK": [
+        {
+          "k": 1,
+          "estimate": 1
+        },
+        {
+          "k": 2,
+          "estimate": 1
+        }
+      ]
+    }
+  ],
+  "dimensionSummary": [
+    {
+      "dimension": "accuracy",
+      "byVariant": [
+        {
+          "variantId": "ra-full",
+          "meanScore": 1
+        }
+      ]
+    },
+    {
+      "dimension": "reliability",
+      "byVariant": [
+        {
+          "variantId": "ra-full",
+          "meanScore": 1
+        }
+      ]
+    }
+  ],
+  "reproducibility": {
+    "judgeModelSha": "unknown-no-judge-configured",
+    "judgeCodeSha": "unknown-no-judge-configured",
+    "runId": "run-1789478976695-d6ur1lcx",
+    "replayCommand": "bun run --cwd packages/benchmarks bench --session real-world-full --run-id run-1789478976695-d6ur1lcx"
+  },
+  "inconclusiveCells": [],
+  "partialMeasurement": false,
+  "passKByVariant": [
+    {
+      "variantId": "ra-full",
+      "passK": [
+        {
+          "k": 1,
+          "estimate": 1
+        },
+        {
+          "k": 2,
+          "estimate": 1
+        }
+      ]
+    }
+  ]
+}

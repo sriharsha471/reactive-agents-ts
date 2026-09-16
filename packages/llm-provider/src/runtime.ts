@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { LLMConfig, LLMConfigFromEnv, llmConfigFromEnv } from "./llm-config.js";
+import { LLMConfig, LLMConfigFromEnv, readLLMConfigFromEnv } from "./llm-config.js";
 import { LLMService } from "./llm-service.js";
 import { AnthropicProviderLive } from "./providers/anthropic.js";
 import { OpenAIProviderLive, GroqProviderLive, XAIProviderLive } from "./providers/openai.js";
@@ -99,7 +99,7 @@ export const createLLMProviderLayer = (
   if (pricingRegistry) configOverrides.pricingRegistry = pricingRegistry;
 
   const configLayer = Object.keys(configOverrides).length > 0
-    ? Layer.succeed(LLMConfig, LLMConfig.of({ ...llmConfigFromEnv, ...configOverrides }))
+    ? Layer.sync(LLMConfig, () => LLMConfig.of({ ...readLLMConfigFromEnv(), ...configOverrides }))
     : LLMConfigFromEnv;
 
   const providerLayer =

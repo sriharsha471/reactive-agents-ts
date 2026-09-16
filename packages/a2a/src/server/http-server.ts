@@ -7,11 +7,10 @@ import type {
   SendMessageParams,
   TaskQueryParams,
   TaskCancelParams,
-  A2ATask,
   AgentCard,
 } from "../types.js";
 import { A2AError } from "../errors.js";
-import { Effect, Context, Layer, Ref } from "effect";
+import { Effect, Context, Layer } from "effect";
 import { secureServe } from "@reactive-agents/runtime-shim";
 import type { ServerLike } from "@reactive-agents/runtime-shim";
 import { A2AServer } from "./a2a-server.js";
@@ -22,12 +21,15 @@ export class A2AHttpServer extends Context.Tag("A2AHttpServer")<
   A2AHttpServer,
   {
     readonly handleJsonRpc: (request: JsonRpcRequest) => Effect.Effect<unknown, A2AError>;
-    readonly start: () => Effect.Effect<void>;
+    /** Binds a real port and returns the port actually bound (useful with `port: 0`). */
+    readonly start: () => Effect.Effect<number>;
     readonly stop: () => Effect.Effect<void>;
   }
 >() {}
 
 const JSONRPC_VERSION = "2.0";
+
+type JsonRpcId = JsonRpcRequest["id"];
 
 type JsonRpcMethod =
   | "message/send"
@@ -42,17 +44,20 @@ export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor
     A2AHttpServer,
     Effect.gen(function* () {
       const server = yield* A2AServer;
-      const store = yield* Ref.make<{ tasks: Map<string, A2ATask> }>({ tasks: new Map() });
-      const taskHandler = createTaskHandler(store, executor);
+      // Single task store: the http server writes/reads through the
+      // A2AServer service's own store (via TaskStore's getTask/setTask),
+      // rather than keeping a second independent Ref. This is what makes
+      // tasks/cancel able to find a task that message/send just created.
+      const taskHandler = createTaskHandler(server, executor);
 
       // Mutable reference to the server instance
       let bunServer: ServerLike | null = null;
 
-      const handleMessageSend = (params: unknown) =>
+      const handleMessageSend = (params: unknown, id: JsonRpcId) =>
         Effect.gen(function* () {
           const sendParams = params as SendMessageParams;
           const task = yield* taskHandler.handleMessageSend(sendParams);
-          return { jsonrpc: JSONRPC_VERSION, id: null, result: task };
+          return { jsonrpc: JSONRPC_VERSION, id, result: task };
         });
 
       const handleMessageStream = (params: unknown, agentCard: AgentCard) =>
@@ -94,28 +99,22 @@ export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor
           return { task, events };
         });
 
-      const handleTasksGet = (params: unknown) =>
+      const handleTasksGet = (params: unknown, id: JsonRpcId) =>
         Effect.gen(function* () {
           const queryParams = params as TaskQueryParams;
-          // Try the local store first, then fall back to the server store
-          const state = yield* Ref.get(store);
-          const localTask = state.tasks.get(queryParams.id);
-          if (localTask) {
-            return { jsonrpc: JSONRPC_VERSION, id: null, result: localTask };
-          }
           const task = yield* server.getTask(queryParams.id);
-          return { jsonrpc: JSONRPC_VERSION, id: null, result: task };
+          return { jsonrpc: JSONRPC_VERSION, id, result: task };
         }).pipe(
           Effect.mapError(
             (e) => new A2AError({ code: "TASK_NOT_FOUND", message: e.taskId }),
           ),
         );
 
-      const handleTasksCancel = (params: unknown) =>
+      const handleTasksCancel = (params: unknown, id: JsonRpcId) =>
         Effect.gen(function* () {
           const cancelParams = params as TaskCancelParams;
           const task = yield* server.cancelTask(cancelParams.id);
-          return { jsonrpc: JSONRPC_VERSION, id: null, result: task };
+          return { jsonrpc: JSONRPC_VERSION, id, result: task };
         }).pipe(
           Effect.mapError((e) => {
             if (e._tag === "TaskNotFoundError") {
@@ -134,10 +133,10 @@ export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor
           }),
         );
 
-      const handleAgentCard = () =>
+      const handleAgentCard = (id: JsonRpcId) =>
         Effect.gen(function* () {
           const card = yield* server.getAgentCard();
-          return { jsonrpc: JSONRPC_VERSION, id: null, result: card };
+          return { jsonrpc: JSONRPC_VERSION, id, result: card };
         });
 
       const routeRequest = (
@@ -145,13 +144,13 @@ export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor
       ): Effect.Effect<unknown, A2AError> => {
         switch (request.method) {
           case "message/send":
-            return handleMessageSend(request.params);
+            return handleMessageSend(request.params, request.id);
           case "tasks/get":
-            return handleTasksGet(request.params);
+            return handleTasksGet(request.params, request.id);
           case "tasks/cancel":
-            return handleTasksCancel(request.params);
+            return handleTasksCancel(request.params, request.id);
           case "agent/card":
-            return handleAgentCard();
+            return handleAgentCard(request.id);
           default:
             return Effect.fail(
               new A2AError({
@@ -253,6 +252,8 @@ export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor
                 return new Response("Not Found", { status: 404 });
               },
             }));
+
+            return bunServer.port;
           }),
 
         stop: () =>

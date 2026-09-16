@@ -9,6 +9,7 @@ export class A2AServer extends Context.Tag("A2AServer")<
       handler: (message: A2AMessage) => Effect.Effect<A2AMessage, A2AError>,
     ) => Effect.Effect<void>;
     readonly getTask: (id: string) => Effect.Effect<A2ATask, TaskNotFoundError>;
+    readonly setTask: (task: A2ATask) => Effect.Effect<void>;
     readonly cancelTask: (id: string) => Effect.Effect<A2ATask, TaskNotFoundError | TaskCanceledError | InvalidTaskStateError>;
     readonly getAgentCard: () => Effect.Effect<AgentCard>;
   }
@@ -39,6 +40,11 @@ export const createA2AServer = (agentCard: AgentCard) =>
             }
             return task;
           }),
+
+        setTask: (task) =>
+          Ref.update(store, (s) => ({
+            tasks: new Map(s.tasks).set(task.id, task),
+          })),
 
         cancelTask: (id) =>
           Effect.gen(function* () {

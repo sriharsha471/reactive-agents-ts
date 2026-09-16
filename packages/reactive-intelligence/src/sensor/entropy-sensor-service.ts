@@ -133,7 +133,7 @@ export const EntropySensorServiceLive = (
             const structuralResult = computeStructuralEntropy(thought, strategy);
 
             // 3. Semantic entropy (requires embed + prior thought)
-            let semanticTaskAlignment: number | null = null;
+            let noveltyScore: number | null = null;
             if (config.entropy.semanticEntropy !== false && llm && priorThought) {
               const embeddings = yield* llm.embed([thought, priorThought]).pipe(
                 Effect.catchAll(() => Effect.succeed([] as readonly (readonly number[])[])),
@@ -157,7 +157,7 @@ export const EntropySensorServiceLive = (
                 // Task embeddings are not available on this path, so
                 // taskAlignment is always zero. Novelty against prior
                 // thoughts is the meaningful disorder signal here.
-                semanticTaskAlignment = semResult.noveltyScore;
+                noveltyScore = semResult.noveltyScore;
 
                 // Update centroid in meta (mutable — matches kernel runner pattern)
                 const newCentroid = updateCentroid(centroid, embeddings[0] as number[], priorEmbeddings.length);
@@ -216,7 +216,7 @@ export const EntropySensorServiceLive = (
             const score = computeCompositeEntropy({
               token: tokenResult?.sequenceEntropy ?? null,
               structural: meanStructural(structuralResult),
-              semantic: semanticTaskAlignment,
+              semantic: noveltyScore,
               behavioral: meanBehavioral(behavioralResult),
               contextPressure: contextPressureValue,
               logprobsAvailable: tokenResult !== null,

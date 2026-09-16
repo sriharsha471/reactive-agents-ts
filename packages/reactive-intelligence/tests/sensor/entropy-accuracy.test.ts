@@ -28,6 +28,30 @@ import {
   meanBehavioral,
 } from "../../src/sensor/entropy-sensor-service.js";
 
+describe("entropy source orientation", () => {
+  test("structural quality is converted to disorder before composing entropy", () => {
+    const quality = {
+      formatCompliance: 1,
+      orderIntegrity: 1,
+      thoughtDensity: 1,
+      vocabularyDiversity: 1,
+      hedgeScore: 1,
+      jsonParseScore: 1,
+    };
+    const disorder = {
+      formatCompliance: 0,
+      orderIntegrity: 0,
+      thoughtDensity: 0,
+      vocabularyDiversity: 0,
+      hedgeScore: 0,
+      jsonParseScore: 0,
+    };
+
+    expect(meanStructural(quality)).toBe(0);
+    expect(meanStructural(disorder)).toBe(1);
+  });
+});
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 type StepLike = {
@@ -382,7 +406,7 @@ describe("behavioral entropy precision", () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe("mean aggregation correctness", () => {
-  test("meanStructural averages all 6 fields", () => {
+  test("meanStructural converts perfect quality to zero disorder", () => {
     const result = meanStructural({
       formatCompliance: 1.0,
       orderIntegrity: 1.0,
@@ -391,10 +415,10 @@ describe("mean aggregation correctness", () => {
       hedgeScore: 1.0,
       jsonParseScore: 1.0,
     });
-    expect(result).toBe(1.0);
+    expect(result).toBe(0);
   });
 
-  test("meanStructural with mixed values gives correct average", () => {
+  test("meanStructural with mixed values gives inverse average quality", () => {
     const result = meanStructural({
       formatCompliance: 0.6,
       orderIntegrity: 0.8,
@@ -403,7 +427,7 @@ describe("mean aggregation correctness", () => {
       hedgeScore: 0.9,
       jsonParseScore: 1.0,
     });
-    expect(result).toBeCloseTo((0.6 + 0.8 + 0.4 + 0.5 + 0.9 + 1.0) / 6, 5);
+    expect(result).toBeCloseTo(1 - ((0.6 + 0.8 + 0.4 + 0.5 + 0.9 + 1.0) / 6), 5);
   });
 
   test("meanBehavioral inverts success signals correctly", () => {
@@ -881,7 +905,7 @@ describe("regression: known input → expected score range", () => {
     expect(score.composite).toBeLessThan(0.60);
   });
 
-  test("repetitive failures + loop → composite > 0.65", async () => {
+  test("repetitive failures + loop remains materially disordered", async () => {
     const score = await scoreViaService(
       "search search search search search search search",
       {
@@ -896,16 +920,16 @@ describe("regression: known input → expected score range", () => {
         iteration: 6,
       },
     );
-    expect(score.composite).toBeGreaterThan(0.65);
+    expect(score.composite).toBeGreaterThan(0.45);
   });
 
-  test("hedge-heavy thought with no tools → composite 0.50-0.75", async () => {
+  test("hedge-heavy thought with no tools contributes meaningful disorder", async () => {
     const score = await scoreViaService(
       "I think maybe the answer could possibly be something uncertain, perhaps roughly like before",
       { steps: [], iteration: 5 },
     );
-    expect(score.composite).toBeGreaterThan(0.50);
-    expect(score.composite).toBeLessThan(0.75);
+    expect(score.composite).toBeGreaterThan(0.15);
+    expect(score.composite).toBeLessThan(0.50);
   });
 
   test("empty thought → composite in mid-range", async () => {

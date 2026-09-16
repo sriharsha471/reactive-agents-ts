@@ -37,7 +37,7 @@ describe("EntropyEventSubscriber", () => {
       yield* eventBus.publish({
         _tag: "ReasoningStepCompleted",
         taskId: "test-task-1",
-        strategy: "plan-execute-reflect",
+        strategy: "blueprint",
         step: 1,
         totalSteps: 5,
         thought: "I need to analyze the data and find patterns in the user behavior logs.",
@@ -69,7 +69,7 @@ describe("EntropyEventSubscriber", () => {
       yield* eventBus.publish({
         _tag: "ReasoningStepCompleted",
         taskId: "test-task-2",
-        strategy: "plan-execute-reflect",
+        strategy: "blueprint",
         step: 1,
         totalSteps: 3,
         action: '[STEP 1/3] s1: Fetch data (tool_call → web-search)',
@@ -97,7 +97,7 @@ describe("EntropyEventSubscriber", () => {
       const event = {
         _tag: "ReasoningStepCompleted" as const,
         taskId: "test-task-3",
-        strategy: "reactive" as const,
+        strategy: "blueprint" as const,
         step: 2,
         totalSteps: 10,
         thought: "Let me search for the answer to this question.",
@@ -130,7 +130,7 @@ describe("EntropyEventSubscriber", () => {
       yield* eventBus.publish({
         _tag: "ReasoningStepCompleted",
         taskId: "test-task-4",
-        strategy: "plan-execute-reflect",
+        strategy: "blueprint",
         step: 1,
         totalSteps: 3,
         thought: "First I need to understand what the user wants.",
@@ -140,7 +140,7 @@ describe("EntropyEventSubscriber", () => {
       yield* eventBus.publish({
         _tag: "ReasoningStepCompleted",
         taskId: "test-task-4",
-        strategy: "plan-execute-reflect",
+        strategy: "blueprint",
         step: 2,
         totalSteps: 3,
         thought: "Now I should fetch the relevant data from the API.",
@@ -150,7 +150,7 @@ describe("EntropyEventSubscriber", () => {
       yield* eventBus.publish({
         _tag: "ReasoningStepCompleted",
         taskId: "test-task-4",
-        strategy: "plan-execute-reflect",
+        strategy: "blueprint",
         step: 3,
         totalSteps: 3,
         thought: "I have all the data, now I can synthesize the final answer.",
@@ -186,7 +186,7 @@ describe("EntropyEventSubscriber", () => {
       yield* eventBus.publish({
         _tag: "ReasoningStepCompleted",
         taskId: "test-task-err",
-        strategy: "reactive",
+        strategy: "blueprint",
         step: 1,
         totalSteps: 5,
         thought: "This should not crash even if the sensor fails.",
@@ -197,5 +197,33 @@ describe("EntropyEventSubscriber", () => {
     });
 
     await Effect.runPromise(program.pipe(Effect.provide(errorLayer)));
+  });
+
+  test("skips strategies the kernel already scores inline", async () => {
+    const program = Effect.gen(function* () {
+      const eventBus = yield* EventBus;
+      yield* subscribeEntropyScoring({ maxIterations: 10 });
+
+      const scored: unknown[] = [];
+      yield* eventBus.on("EntropyScored", (event) =>
+        Effect.sync(() => { scored.push(event); }),
+      );
+
+      for (const strategy of ["reactive", "plan-execute-reflect", "direct"] as const) {
+        yield* eventBus.publish({
+          _tag: "ReasoningStepCompleted",
+          taskId: `skip-${strategy}`,
+          strategy,
+          step: 1,
+          totalSteps: 5,
+          thought: "A kernel-scored thought must not be scored again here.",
+        });
+        yield* Effect.sleep("10 millis");
+      }
+
+      expect(scored.length).toBe(0);
+    });
+
+    await Effect.runPromise(program.pipe(Effect.provide(testLayer)));
   });
 });

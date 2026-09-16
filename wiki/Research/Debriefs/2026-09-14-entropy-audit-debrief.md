@@ -410,15 +410,13 @@ usable tier**, not two.
 
 ## 8. What remains open
 
-- **RC-4 — the weight-table ablation.** Still deliberately deferred, and still
-  blocked, though the blocker has moved: Tasks 1–3 have now landed and
-  `sourcesPresent` *is* recorded across a corpus, which was the stated
-  precondition. The new blocker is `modelTier: "unknown"` on every local event
-  (§4) — a local-tier weighting cannot be specified against a tier the sensor
-  cannot name. Fix tier resolution for the ollama provider first. The narrower
-  right question remains: on local models only three of five sources are ever
-  present, so the honest fix is probably a dedicated local-tier weighting rather
-  than redistributing absent sources' weight. Separate spec.
+- ~~**RC-4 — the weight-table ablation.**~~ **RESOLVED** — the ollama
+  `modelTier: "unknown"` blocker was fixed (providerName threaded through
+  `KernelRunOptions` and all strategy call sites); verdict landed from real
+  bench correlation data, see
+  `wiki/Research/Debriefs/2026-09-14-entropy-weight-validation-debrief.md`
+  (note its own correction: Task 1's fix was not live during the Task 3
+  bench run it correlates against — read the caveat before citing).
 - **`ENTROPY_CONVERGENCE_THRESHOLDS` may never fire at all.** It did not engage
   in any of the three original probe runs (the derivative never converged) and
   no convergence event appears in this task's 20-trace corpus either.
@@ -435,11 +433,12 @@ usable tier**, not two.
   succeeding-but-useless tool calls remain outside the single-authority rule
   (§5). Whether the kernel should count those as redirects at all is an open
   design question, not a bug in Task 5.
-- **Framework-level gaps surfaced incidentally**, none acted on:
-  `modelTier: "unknown"` for ollama; `agent.run()`'s result exposes no `runId`
-  (probes must recover it from `rax:diagnose list`); and
-  `packages/benchmarks/src/run.ts:254` claims per-cell report accumulation
-  ("results accumulate via the merge-by-cell writer") but `runner.ts:1581-1586`
-  is a shallow `{...existing, ...sessionReport}` spread that **clobbers**
-  `taskReports` — a stale comment that will mislead the next person who splits a
-  session across invocations.
+- **Framework-level gaps surfaced incidentally**: ~~`modelTier: "unknown"` for
+  ollama~~ RESOLVED (see RC-4 above); `agent.run()`'s result exposes no
+  `runId` (probes must recover it from `rax:diagnose list`) — still open,
+  not acted on. The stale `run.ts:254` accumulation comment was corrected
+  in place (2026-09-16) to document the actual `runner.ts` behavior
+  (`{...existing, ...sessionReport}` overwrites `taskReports`, doesn't
+  merge) — the underlying merge-by-cell writer this comment wrongly
+  claimed to exist is still not implemented; still open if multi-invocation
+  session splitting is ever needed.

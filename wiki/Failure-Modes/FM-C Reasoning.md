@@ -68,6 +68,47 @@ category: FM-C
 - ✅ M5: Context Curation — Compression keeps context window healthy
 - 🔄 Phase 1.5: M3 improved retry context (data specificity signals)
 
+## FM-C3: Phantom Entropy Divergence (double-scored trajectory)
+
+**Manifestation (observed 2026-09-15, run `01M2K7Q6JSAX0K2C0BYJ89HS79`):** a
+successful, efficient run (5.8s, 7 steps, 2 tool calls) graded **D** with an
+"Entropy diverging" warning and a tool-inject nudge to call web-search *after*
+the deliverable was written.
+
+**Root causes (all fixed 2026-09-15):**
+
+1. **Double scoring.** The kernel observer (`runReactiveObserver`,
+   iteration = kernel `completedIteration`) and the runtime engine's event
+   collector (`execution-engine.ts`, iteration = `ReasoningStepCompleted.step`)
+   both scored every thought into one shared per-task trajectory with
+   incompatible labels. The duplicate's phantom composite tipped the
+   recent-3 slope over +0.05, so the final point classified "diverging" on a
+   flat sequence. Fix: `scoresEntropyInline` gate
+   (`@reactive-agents/core`) — engine/RI collectors skip kernel-scored
+   strategies; sensor also dedups consecutive identical thoughts per task.
+2. **Inverted structural source.** `meanStructural` returned quality
+   (high = well-formed) while the composite consumes disorder (high = bad) —
+   unlike `meanBehavioral`, which explicitly inverts. Well-structured runs
+   read as high, rising entropy. Fix: `meanStructural` now returns disorder.
+   Post-fix validation corpus: high-signal 0.000–0.066, ambiguous
+   0.218–0.279, low-signal 0.344–0.580 (was: overlapping).
+3. **Weight discontinuity at the short-run bypass.** Iteration ≤ 2 ignored
+   `taskCategory`, so the same thought scored ~0.07 higher under iter-0/2
+   labels than under iter-3+ labels. Fix: one `resolveWeights` path; the
+   bypass now differs only in `confidence: "low"`.
+4. **Dead semantic source.** `taskEmbedding` is always null on the sensor
+   path, so `taskAlignment` was a constant 0. Fix: source uses
+   `noveltyScore` (disorder-oriented).
+5. **Dashboard trusted baked labels.** Grade D and the divergence alert came
+   from per-point shapes computed against the polluted history, with no
+   confidence gating. Fix: the console exporter recomputes trajectory shape
+   from the deduplicated displayed composites, caps low-confidence runs at C,
+   and reports a degraded-signal note instead of a confident divergence.
+
+**Regression tests:** `entropy-history-dedup`, subscriber skip test,
+`kernel-entropy-coverage`, composite continuity, validation thresholds,
+dashboard recompute test (`exporters.test.ts`).
+
 ---
 
 ## Integration Testing (Phase 2)

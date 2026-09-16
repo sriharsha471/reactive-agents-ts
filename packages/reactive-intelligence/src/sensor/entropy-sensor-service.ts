@@ -29,9 +29,15 @@ import { CalibrationStore } from "../calibration/calibration-store.js";
 
 // ─── Helper functions ───
 
-/** Convert StructuralEntropy fields to a single [0,1] score (mean of all 6 fields). */
+/**
+ * Convert structural quality fields to [0,1] disorder.
+ *
+ * The individual fields are quality scores (format compliance, order
+ * integrity, density, diversity, lack of hedging, and JSON validity), while
+ * composite entropy uses the opposite convention: higher means more disorder.
+ */
 export function meanStructural(s: StructuralEntropy): number {
-  return (
+  const quality = (
     s.formatCompliance +
     s.orderIntegrity +
     s.thoughtDensity +
@@ -39,6 +45,7 @@ export function meanStructural(s: StructuralEntropy): number {
     s.hedgeScore +
     s.jsonParseScore
   ) / 6;
+  return 1 - quality;
 }
 
 /** Convert BehavioralEntropy fields to a single [0,1] disorder score.
@@ -98,6 +105,10 @@ export const EntropySensorServiceLive = (
 
       // Per-task trajectory tracking (taskId -> EntropyScore[])
       const trajectories = new Map<string, EntropyScoreLike[]>();
+      // A kernel score and the runtime event collector can observe the same
+      // thought back-to-back. Keep the second observation out of the shared
+      // trajectory while still returning its fresh score to the caller.
+      const lastThoughtByTask = new Map<string, string>();
 
       // Calibration store — use external if provided, else in-memory
       const calStore = externalCalStore ?? new CalibrationStore();
@@ -122,7 +133,7 @@ export const EntropySensorServiceLive = (
             const structuralResult = computeStructuralEntropy(thought, strategy);
 
             // 3. Semantic entropy (requires embed + prior thought)
-            let semanticTaskAlignment: number | null = null;
+            let noveltyScore: number | null = null;
             if (config.entropy.semanticEntropy !== false && llm && priorThought) {
               const embeddings = yield* llm.embed([thought, priorThought]).pipe(
                 Effect.catchAll(() => Effect.succeed([] as readonly (readonly number[])[])),
@@ -143,7 +154,10 @@ export const EntropySensorServiceLive = (
                   priorEmbeddings,
                   centroid,
                 });
-                semanticTaskAlignment = semResult.taskAlignment;
+                // Task embeddings are not available on this path, so
+                // taskAlignment is always zero. Novelty against prior
+                // thoughts is the meaningful disorder signal here.
+                noveltyScore = semResult.noveltyScore;
 
                 // Update centroid in meta (mutable — matches kernel runner pattern)
                 const newCentroid = updateCentroid(centroid, embeddings[0] as number[], priorEmbeddings.length);
@@ -202,7 +216,7 @@ export const EntropySensorServiceLive = (
             const score = computeCompositeEntropy({
               token: tokenResult?.sequenceEntropy ?? null,
               structural: meanStructural(structuralResult),
-              semantic: semanticTaskAlignment,
+              semantic: noveltyScore,
               behavioral: meanBehavioral(behavioralResult),
               contextPressure: contextPressureValue,
               logprobsAvailable: tokenResult !== null,
@@ -215,7 +229,10 @@ export const EntropySensorServiceLive = (
             });
 
             // Store in per-task trajectory
-            existing.push(score);
+            if (lastThoughtByTask.get(tid) !== thought) {
+              existing.push(score);
+              lastThoughtByTask.set(tid, thought);
+            }
             trajectories.set(tid, existing);
 
             return score as EntropyScoreLike;

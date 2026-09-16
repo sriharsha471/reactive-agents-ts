@@ -243,6 +243,10 @@ export type {
 
 // ─── Entropy Sensor Tag (for reactive-intelligence layer) ───
 export { EntropySensorService } from "./services/entropy-sensor-tag.js";
+export {
+  KERNEL_INLINE_ENTROPY_STRATEGIES,
+  scoresEntropyInline,
+} from "./services/entropy-sensor-tag.js";
 export type {
   KernelStateLike,
   TokenLogprobLike,

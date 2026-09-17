@@ -468,9 +468,6 @@ export const buildBaseRuntimeAndEngine = (
       mcpServers:
         state._mcpServers.length > 0 ? state._mcpServers : undefined,
       reasoningOptions: state._reasoningOptions,
-      enableA2A: !!state._a2aOptions,
-      a2aPort: state._a2aOptions?.port,
-      a2aBasePath: state._a2aOptions?.basePath,
       enableGateway: !!state._gatewayOptions,
       gatewayOptions: state._gatewayOptions,
       contextProfile: state._contextProfile,

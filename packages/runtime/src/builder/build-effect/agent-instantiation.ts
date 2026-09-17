@@ -37,6 +37,19 @@ export interface AgentInstantiationDeps {
   readonly engine: EngineLike;
   readonly fullRuntime: Layer.Layer<unknown, unknown, unknown>;
   readonly agentId: string;
+  /**
+   * Display name set via `.withName()` — distinct from `agentId`, which
+   * embeds a `${name}-${Date.now()}` timestamp prefix. Forwarded so
+   * `ReactiveAgent.serveA2A()` can build a real Agent Card name instead of
+   * deriving one from the timestamped `agentId`.
+   */
+  readonly name?: string;
+  /**
+   * Default port for `ReactiveAgent.serveA2A()`, sourced from `.withA2A({port})`.
+   * `.withA2A()` no longer builds a layer (the old wiring never bound a real
+   * port or reached the agent) — it now only carries this default.
+   */
+  readonly a2aDefaultPort?: number;
   readonly mcpServerNames: readonly string[];
   readonly gatewayOptions?: GatewayOptions;
   readonly streamDensity?: StreamDensity;
@@ -159,5 +172,7 @@ export const instantiateAgent = (deps: AgentInstantiationDeps): ReactiveAgent =>
     deps.enableTools,
     deps.runtimeConfig ?? {},
     deps.kernelMetaTools,
+    deps.name,
+    deps.a2aDefaultPort,
   );
 };

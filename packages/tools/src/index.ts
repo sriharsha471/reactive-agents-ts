@@ -59,6 +59,13 @@ export {
   createFileTokenStore,
   DEFAULT_MCP_AUTH_DIR,
 } from "./mcp/auth/token-store.js";
+// Provider construction (Task 3/4/5) + the CVE-2025-6514-hardened browser
+// opener (Task 4) — surfaced here so `apps/cli`'s `rax mcp login|logout`
+// (Task 6) can build/drive the exact same provider `mcp-client.ts`'s
+// `connect()` uses, instead of re-deriving auth-provider construction.
+export { createAuthProvider } from "./mcp/auth/create-provider.js";
+export { openBrowser } from "./mcp/auth/open-browser.js";
+export { hasRedactor, type HardenedProviderExtras } from "./mcp/auth/hardened-provider.js";
 
 // ─── Scratchpad spill (#47) ───
 export {

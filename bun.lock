@@ -37,6 +37,7 @@
         "reactive-agents": "dist/index.js",
       },
       "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.28.0",
         "@reactive-agents/a2a": "workspace:*",
         "@reactive-agents/core": "workspace:*",
         "@reactive-agents/diagnose": "workspace:*",

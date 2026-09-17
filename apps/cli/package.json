@@ -28,6 +28,7 @@
   ],
   "dependencies": {
     "effect": "^3.10.0",
+    "@modelcontextprotocol/sdk": "^1.28.0",
     "@reactive-agents/core": "workspace:*",
     "@reactive-agents/runtime": "workspace:*",
     "@reactive-agents/eval": "workspace:*",

@@ -232,13 +232,33 @@ export const createA2AHttpServer = (
                   try {
                     const body = (await req.json()) as JsonRpcRequest;
 
-                    // Handle message/stream — return SSE
+                    // Handle message/stream — return SSE, or a JSON-RPC error
+                    // if the task never started (e.g. no executor configured)
+                    // — nothing has been written yet, so a plain JSON error
+                    // response is correct here, not a malformed SSE body.
                     if (body.method === "message/stream") {
-                      const streamResult = await Effect.runPromise(
-                        handleMessageStream(body.params, agentCard),
+                      const streamOutcome = await Effect.runPromise(
+                        handleMessageStream(body.params, agentCard).pipe(Effect.either),
                       );
-                      const sseBody = streamResult.events
-                        .map((evt) => formatSSEEvent(evt))
+
+                      if (streamOutcome._tag === "Left") {
+                        const error = streamOutcome.left;
+                        return new Response(
+                          JSON.stringify({
+                            jsonrpc: JSONRPC_VERSION,
+                            id: body.id,
+                            error: {
+                              code: -32000,
+                              message: error.message,
+                              data: { a2aCode: error.code },
+                            },
+                          }),
+                          { headers: { "Content-Type": "application/json" } },
+                        );
+                      }
+
+                      const sseBody = streamOutcome.right.events
+                        .map((evt) => formatSSEEvent(evt, body.id))
                         .join("");
 
                       return new Response(sseBody, {

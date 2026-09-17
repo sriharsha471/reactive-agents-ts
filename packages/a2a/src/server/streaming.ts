@@ -17,10 +17,10 @@ export type StreamEvent =
   | { type: "status-update"; data: TaskStatusUpdateEvent }
   | { type: "artifact-update"; data: TaskArtifactUpdateEvent };
 
-export const formatSSEEvent = (event: StreamEvent): string => {
+export const formatSSEEvent = (event: StreamEvent, requestId: string | number | null): string => {
   const data = JSON.stringify({
     jsonrpc: "2.0",
-    id: 1,
+    id: requestId,
     result:
       event.type === "task"
         ? { ...event.data, kind: "task" }

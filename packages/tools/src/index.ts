@@ -111,10 +111,13 @@ export {
   fileReadHandler,
   fileWriteTool,
   fileWriteHandler,
+  fileEditTool,
+  fileEditHandler,
   listDirectoryTool,
   listDirectoryHandler,
   withFileRoot,
   getFileRoot,
+  harnessEchoRejection,
 } from "./skills/file-operations.js";
 export { httpGetTool, httpGetHandler, type HttpGetConfig } from "./skills/http-client.js";
 export { grepTool, grepHandler } from "./skills/grep.js";

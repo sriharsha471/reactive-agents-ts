@@ -54,7 +54,7 @@
 
 ### Claims to verify in Task 0
 
-The research pass (2026-09-17) reported a 2026-07-28 MCP spec revision (RFC 8707 on clients as MUST, RFC 8693 token exchange, scope step-up). The installed SDK targets `2025-11-25`. Task 0 resolves this and checks the SDK's actual client behavior for each "SDK handles it" assumption above.
+**Resolved (2026-09-17), correcting the research pass:** `2026-07-28` is a real, current MCP spec revision (`2025-11-25`, what the installed SDK targets, is now superseded/"Final") — but the prior research pass mis-attributed what changed in it. RFC 8707's `resource` parameter was **already MUST** in `2025-11-25`; `2026-07-28` didn't touch that requirement. **RFC 8693 (token exchange) does not appear anywhere in the MCP spec** — neither revision mentions it; the Follow-ups entry below already correctly treats it as an unrelated, separate future concern. What `2026-07-28` actually adds that's OAuth-relevant: **RFC 9207 authorization-server issuer (`iss`) validation** — clients **MUST** record the authorization server's `issuer` before redirecting and validate a returned `iss` parameter against it before redeeming the authorization code. The installed SDK (1.29.0) implements none of this (confirmed: zero references to `iss`/9207 anywhere in `client/auth.js`, `client/streamableHttp.js`, `client/sse.js`, `shared/auth.js`) — this is a new requirement, not currently assigned to any task; see `task-0-report.md`'s gap list item 2 for a recommendation to add it to Task 4 (alongside `state` in the loopback listener) with Task 5 enforcing it. Full gap list, quoted spec text, and the regression-pin test are in `.superpowers/sdd/2026-09-17-mcp-client-oauth/task-0-report.md`.
 
 ---
 

@@ -3,12 +3,12 @@ title: A2A Protocol
 stability: experimental
 description: >-
   Agent-to-Agent communication using Google's A2A protocol — Agent Cards,
-  JSON-RPC server/client, SSE streaming, and agent discovery.
+  JSON-RPC server/client, and agent discovery.
 sidebar:
   order: 1
 ---
 
-The A2A (Agent-to-Agent) protocol enables agents to discover each other, exchange tasks, and stream results over HTTP. Reactive Agents implements the [A2A specification](https://a2a-protocol.org) with full JSON-RPC 2.0 support.
+The A2A (Agent-to-Agent) protocol enables agents to discover each other and exchange tasks over HTTP. Reactive Agents implements the [A2A specification](https://a2a-protocol.org) with JSON-RPC 2.0 support. Real-time SSE streaming is not yet implemented — see [SSE Streaming](#sse-streaming) below.
 
 ## Overview
 
@@ -21,10 +21,10 @@ Agent B                          Agent A (Server)
   │◀── AgentCard ───────────────────│
   │                                 │
   │─── POST / (message/send) ──────▶│  2. Send Task
-  │◀── { taskId } ─────────────────│
+  │◀── A2ATask { id, status, … } ───│
   │                                 │
   │─── POST / (tasks/get) ─────────▶│  3. Poll Result
-  │◀── { status, result } ─────────│
+  │◀── A2ATask { id, status, … } ───│
 ```
 
 ## Agent Cards
@@ -40,7 +40,10 @@ const card = generateAgentCard({
   url: "https://my-agent.example.com",
   organization: "My Org",
   capabilities: {
-    streaming: true,
+    // Real SSE streaming isn't implemented yet — `generateAgentCard` defaults
+    // this to `false`. Only set it to `true` if you've wired real streaming
+    // yourself; see "SSE Streaming" below.
+    streaming: false,
     pushNotifications: false,
   },
   skills: [
@@ -83,38 +86,39 @@ This starts a fully functional A2A HTTP server with:
 
 ### Via Builder
 
+`.withA2A({ port, basePath })` only *configures* the defaults for serving — it
+does not start a server by itself (an agent built with just `.withA2A()` and
+nothing else serves nothing). Call `agent.serveA2A()` to actually bind and
+start listening:
+
 ```typescript
 const agent = await ReactiveAgents.create()
   .withName("my-agent")
   .withProvider("anthropic")
   .withA2A({ port: 3000 })
   .build();
+
+const handle = await agent.serveA2A();
+// Agent Card now served at http://127.0.0.1:3000/.well-known/agent.json
+console.log(`Listening on port ${handle.port}`);
+
+// ...later
+await handle.stop();
+```
+
+`serveA2A()` also accepts its own options — `port`, `basePath`, `hostname`,
+`description`, `name`, and `token` — which override whatever `.withA2A()` set:
+
+```typescript
+const handle = await agent.serveA2A({ port: 4000, basePath: "/api/agents" });
 ```
 
 ### Programmatic Server
 
-For full control, use the A2A server directly:
-
-```typescript
-import { generateAgentCard } from "@reactive-agents/a2a";
-
-const card = generateAgentCard({ name: "my-agent", url: "http://localhost:3000" });
-
-const server = Bun.serve({
-  port: 3000,
-  async fetch(req) {
-    const url = new URL(req.url);
-    if (url.pathname === "/.well-known/agent.json") {
-      return Response.json(card);
-    }
-    if (req.method === "POST" && url.pathname === "/") {
-      const body = await req.json();
-      // Handle JSON-RPC methods...
-    }
-    return new Response("Not Found", { status: 404 });
-  },
-});
-```
+`agent.serveA2A()` covers the standard case. For lower-level control (e.g.
+mounting A2A routes inside an existing `Bun.serve` app), use
+`createA2AHttpServer` from `@reactive-agents/a2a` directly — it's the same
+server implementation `serveA2A()` and `rax serve` both use under the hood.
 
 ## Client: Discovering and Calling Agents
 
@@ -150,19 +154,25 @@ const layer = createA2AClient({ baseUrl: "https://agent.example.com" });
 const result = await Effect.gen(function* () {
   const client = yield* A2AClient;
 
-  // Send a task
-  const { taskId } = yield* client.sendMessage({
+  // Send a task — returns a spec-shaped A2ATask: { id, status, artifacts, ... }
+  const task = yield* client.sendMessage({
     message: {
       role: "user",
       parts: [{ kind: "text", text: "Research quantum computing" }],
     },
   });
 
-  // Poll for result
-  const task = yield* client.getTask({ id: taskId });
-  return task;
+  // Poll for result using the task's id
+  const finalTask = yield* client.getTask({ id: task.id });
+  console.log(finalTask.status.state); // "completed" | "failed" | "working" | ...
+  return finalTask;
 }).pipe(Effect.provide(layer), Effect.runPromise);
 ```
+
+By default `message/send` returns immediately with the task in `working`
+state (non-blocking, per spec) and you poll `tasks/get` yourself, as above.
+Pass `configuration: { blocking: true }` to have the server wait and return
+the task once it reaches a terminal state.
 
 ### Authentication
 
@@ -247,26 +257,18 @@ const agent = await ReactiveAgents.create()
 
 ## SSE Streaming
 
-For real-time task updates, use Server-Sent Events:
+**Not yet fully implemented.** The `message/stream` JSON-RPC method exists,
+but `handleMessageStream` currently awaits the task to run to completion and
+joins the resulting events into a single response body — it does not push
+events incrementally as the task progresses. Because of this,
+`generateAgentCard` defaults `capabilities.streaming` to `false`, and agent
+cards no longer advertise streaming support they can't back up.
 
-<!-- docs-skip-typecheck -->
-```typescript
-import { createSSEStream, formatSSEEvent } from "@reactive-agents/a2a";
-
-// Server side: create an SSE stream
-const { stream, enqueue, close } = createSSEStream();
-
-// Push events as the task progresses
-enqueue({ type: "status", taskId: "abc", data: { state: "working" } });
-enqueue({ type: "artifact", taskId: "abc", data: { parts: [{ kind: "text", text: "Partial result..." }] } });
-enqueue({ type: "status", taskId: "abc", data: { state: "completed" } });
-close();
-
-// Return as SSE response
-return new Response(stream, {
-  headers: { "Content-Type": "text/event-stream" },
-});
-```
+`@reactive-agents/a2a` still exports `formatSSEEvent` for formatting
+individual `A2ATask` / task-update events into the `text/event-stream` wire
+format, for callers building their own incremental streaming on top of it.
+Real incremental SSE streaming (`message/stream` and `tasks/sendSubscribe`
+pushing events as they happen) is a planned follow-up, not yet available.
 
 ## MCP Transports
 
@@ -299,7 +301,7 @@ When connecting to MCP (Model Context Protocol) tool servers, Reactive Agents su
 | Method | Description | Params |
 |--------|-------------|--------|
 | `message/send` | Send a message and create a task | `{ message: A2AMessage }` |
-| `message/stream` | Send and subscribe to SSE updates | `{ message: A2AMessage }` |
+| `message/stream` | Send and get SSE-formatted updates (not yet incremental — see [SSE Streaming](#sse-streaming)) | `{ message: A2AMessage }` |
 | `tasks/get` | Get task status and result | `{ id: string }` |
 | `tasks/cancel` | Cancel an in-progress task | `{ id: string }` |
 | `agent/card` | Get the agent's card via RPC | — |

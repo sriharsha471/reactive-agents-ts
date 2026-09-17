@@ -291,7 +291,7 @@ Every key of `AgentConfig`, its type, and whether it is required. This table is
 
 | Method | Default | Description |
 |--------|---------|-------------|
-| `.withA2A(options?)` | `{ port: 3000 }` | Local A2A JSON-RPC server (`port`, `basePath`) |
+| `.withA2A(options?)` | `{ port: 3000 }` | Configures A2A server defaults (`port`, `basePath`); call `agent.serveA2A()` to serve |
 | `.withAgentTool(name, config)` | none | Register a static sub-agent as a tool |
 | `.withDynamicSubAgents(options?)` | disabled | Allow LLM to spawn sub-agents at runtime |
 | `.withRemoteAgent(name, url)` | none | Connect to a remote agent via A2A protocol |

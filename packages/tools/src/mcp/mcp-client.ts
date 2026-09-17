@@ -898,19 +898,29 @@ async function connectInternal(config: ConnectConfig): Promise<ActiveConnection>
 
 /**
  * HTTP/SSE connect, with the authorization-code interactive retry: the SDK
- * throws `UnauthorizedError` from `sdkClient.connect(transport)` once its
- * `auth()` orchestrator has called `provider.redirectToAuthorization(url)`
- * (our provider has, by that point, either already thrown the
- * `rax mcp login` error — non-interactive — or already started the
- * loopback listener and opened the browser / called `onAuthorizationUrl` —
- * interactive). For the interactive case: await the authorization code the
- * listener collects, call `transport.finishAuth(code)` to exchange it for
- * tokens, then reconnect with a FRESH transport + client — the SDK's own
- * `finishAuth` doc comment says this enables "the next connection attempt"
- * to succeed; the original transport's auth-loop guard
+ * throws `UnauthorizedError` once its `auth()` orchestrator has called
+ * `provider.redirectToAuthorization(url)` (our provider has, by that point,
+ * either already thrown the `rax mcp login` error — non-interactive — or
+ * already started the loopback listener and opened the browser / called
+ * `onAuthorizationUrl` — interactive). For the interactive case: await the
+ * authorization code the listener collects, call `transport.finishAuth(code)`
+ * to exchange it for tokens, then reconnect with a FRESH transport + client —
+ * the SDK's own `finishAuth` doc comment says this enables "the next
+ * connection attempt" to succeed; the original transport's auth-loop guard
  * (`_hasCompletedAuthFlow`) and any half-open stream state are not meant to
  * be reused post-exchange. The same `authProvider` instance carries over,
  * so the freshly persisted tokens are picked up immediately.
+ *
+ * `attempt()` covers BOTH `sdkClient.connect(transport)` AND the subsequent
+ * `listTools()` call inside `buildMCPServer` — not just the initial
+ * handshake. Found live against Google's Home MCP server (2026-09-17):
+ * Google's `initialize` succeeds with no token at all (its `POST /mcp`
+ * returns 200 unauthenticated), and only `tools/list` returns a 401 — a
+ * real-world server that gates a LATER request, not the first one. The MCP
+ * spec never requires the first request to be the one that's challenged, so
+ * treating only `sdkClient.connect()`'s own 401 as retryable silently
+ * dropped every server shaped like this straight to a raw "Unauthorized"
+ * with no interactive-login attempt at all.
  */
 async function connectHttpLike(
   config: ConnectConfig,
@@ -923,9 +933,15 @@ async function connectHttpLike(
   let transport = createTransport(config, undefined, authProvider);
   let sdkClient = new Client({ name: "reactive-agents", version: "1.0.0" }, { capabilities: {} });
 
+  const attempt = async (): Promise<MCPServer> => {
+    await sdkClient.connect(transport);
+    return buildMCPServer(config.name, effectiveTransport, config.endpoint, config, sdkClient);
+  };
+
+  let server: MCPServer;
   try {
     try {
-      await sdkClient.connect(transport);
+      server = await attempt();
     } catch (err) {
       if (
         !(err instanceof UnauthorizedError) ||
@@ -949,13 +965,13 @@ async function connectHttpLike(
 
       transport = createTransport(config, undefined, authProvider);
       sdkClient = new Client({ name: "reactive-agents", version: "1.0.0" }, { capabilities: {} });
-      await sdkClient.connect(transport);
+      server = await attempt();
       mcpDebug(`[MCP oauth] "${config.name}" — interactive login complete`);
     }
   } catch (err) {
     // Any failure past this point (including a non-retryable error from the
-    // FIRST `sdkClient.connect` above, and a retry that itself fails) must
-    // not leave an orphaned, listening loopback socket + live timeout — see
+    // FIRST `attempt()` above, and a retry that itself fails) must not leave
+    // an orphaned, listening loopback socket + live timeout — see
     // `disposeAuthorizationListener`'s doc comment for why this is needed
     // even though the happy path and the timeout path both self-close.
     if (authProvider !== undefined && hasAuthorizationCodeHandle(authProvider)) {
@@ -975,7 +991,6 @@ async function connectHttpLike(
   }
 
   mcpDebug(`[MCP init] "${config.name}" — connected via ${effectiveTransport}`);
-  const server = await buildMCPServer(config.name, effectiveTransport, config.endpoint, config, sdkClient);
   return { client: sdkClient, transport, server, authProvider };
 }
 

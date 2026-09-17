@@ -94,6 +94,16 @@ export interface FixtureOverrides {
    * difference must NOT be treated as an issuer mix-up.
    */
   authorizationServerUrlTrailingSlash?: boolean;
+  /**
+   * Reproduces a real-world server shape found live against Google's Home
+   * MCP (2026-09-17): `initialize` succeeds with no Bearer token at all, but
+   * every other JSON-RPC method (e.g. `tools/list`) still requires one. The
+   * MCP spec never requires the FIRST request to be the one that's
+   * challenged — a client whose interactive-login retry only covers the
+   * initial connect, not later calls, silently fails against a server
+   * shaped like this instead of ever attempting login.
+   */
+  allowUnauthenticatedInitialize?: boolean;
 }
 
 export interface RecordedRequest {
@@ -296,7 +306,24 @@ export async function startOAuthMcpFixture(
           headers: { "WWW-Authenticate": `Bearer resource_metadata="${resourceMetadataUrl}"` },
         });
 
-      if (!match) return unauthorized();
+      if (!match) {
+        if (overrides.allowUnauthenticatedInitialize) {
+          const cloned = req.clone();
+          let method: unknown;
+          try {
+            method = (await cloned.json() as { method?: unknown } | undefined)?.method;
+          } catch {
+            /* not JSON-RPC-shaped — fall through to unauthorized */
+          }
+          if (method === "initialize") {
+            const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true });
+            const server = makeWhoamiServer();
+            await server.connect(transport);
+            return transport.handleRequest(req);
+          }
+        }
+        return unauthorized();
+      }
       const token = match[1] ?? "";
 
       let payload: JWTPayload;

@@ -182,6 +182,50 @@ describe("MCP client OAuth — authorization_code (interactive)", () => {
   // confirmed by temporarily reverting it and re-running this test (see the
   // Task 4 report for the transcript).
 
+  // Post-merge live-verification finding (2026-09-17, against Google Home
+  // MCP): Google's `initialize` succeeds with no token at all; only
+  // `tools/list` returns 401. `connectHttpLike`'s retry originally covered
+  // only the initial `sdkClient.connect()` call, not the `listTools()`
+  // `buildMCPServer` makes afterward — a server shaped this way (spec-legal;
+  // nothing requires the FIRST request to be the one that's challenged)
+  // never got an interactive-login attempt at all, just a raw "Unauthorized".
+  it("RED-ON-CUT: interactive retry also covers a 401 raised by listTools (initialize succeeds unauthenticated)", async () => {
+    const f = await fixture();
+    f.configure({ allowUnauthenticatedInitialize: true });
+    const store = createMemoryTokenStore();
+
+    const server = await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* makeMCPClient;
+        return yield* client.connect({
+          name: "unauth-initialize",
+          transport: "streamable-http",
+          endpoint: f.resourceUrl,
+          auth: {
+            type: "authorization_code",
+            clientId: "unauth-initialize-client",
+            interactive: true,
+            timeoutMs: 10_000,
+            onAuthorizationUrl: driveRedirect,
+          },
+          tokenStore: store,
+        });
+      }),
+    );
+
+    expect(server.status).toBe("connected");
+    expect(f.requests.some((r) => r.path === "/authorize")).toBe(true);
+    const stored = await store.get(canonicalResourceKey(f.resourceUrl));
+    expect(stored?.tokens?.access_token).toBeTruthy();
+  });
+  // RED-ON-CUT proof: reverting `connectHttpLike`'s `attempt()` restructure
+  // (i.e. calling `buildMCPServer` AFTER the try/catch instead of inside
+  // `attempt()`, as it was before this fix) makes this test fail — the
+  // `UnauthorizedError` from `listTools()` propagates uncaught as a raw
+  // "Unauthorized" `MCPConnectionError` instead of triggering the
+  // interactive retry; confirmed by temporarily reverting the file to the
+  // pre-fix shape and re-running this test.
+
   it("2. non-interactive with no stored token → MCPConnectionError naming rax mcp login; no listener bound; openBrowser never called", async () => {
     const f = await fixture();
     const store = createMemoryTokenStore();

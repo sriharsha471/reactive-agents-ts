@@ -35,8 +35,8 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { MCPServer } from "../types.js";
 import { MCPConnectionError, ToolExecutionError } from "../errors.js";
 import { createAuthProvider } from "./auth/create-provider.js";
-import { hasRedactor, redactBearerTokens } from "./auth/hardened-provider.js";
-import { createMemoryTokenStore } from "./auth/token-store.js";
+import { hasRedactor, redactBearerTokens, LOOPBACK_HOSTS } from "./auth/hardened-provider.js";
+import { createFileTokenStore } from "./auth/token-store.js";
 import type { MCPTokenStore } from "./auth/types.js";
 
 const mcpDebug = (...args: unknown[]): void => {
@@ -64,19 +64,20 @@ type ConnectConfig = Omit<
 
 /**
  * Default OAuth token store when `config.auth` is set without an explicit
- * `config.tokenStore` — per-process, in-memory only (matches `MCPServer.tokenStore`'s
- * documented default). Shared across servers: {@link MCPTokenStore} keys are
+ * `config.tokenStore` — the persistent file store under `~/.reactive-agents/mcp-auth`
+ * (matches `MCPServer.tokenStore`'s documented default, `.withMCP()`'s JSDoc, every
+ * docs site, and the changeset; `rax mcp login <name>` writes to this same file store,
+ * so a subsequent connection with no explicit `tokenStore` must read from it too —
+ * final-review C1). Shared across servers: {@link MCPTokenStore} keys are
  * canonicalized per-resource-URL (see `canonicalResourceKey`), so two servers
- * never collide on this shared instance.
+ * never collide on this shared instance. Pass `createMemoryTokenStore()` explicitly
+ * for tests/CI that must not touch disk.
  */
 let defaultTokenStore: MCPTokenStore | undefined;
 function getDefaultTokenStore(): MCPTokenStore {
-  defaultTokenStore ??= createMemoryTokenStore();
+  defaultTokenStore ??= createFileTokenStore();
   return defaultTokenStore;
 }
-
-/** Loopback hostnames exempt from the HTTPS-for-auth requirement below. */
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 
 /**
  * Sanitizes an error message before it crosses into `MCPConnectionError` /
@@ -90,6 +91,39 @@ const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 function sanitizeErrorMessage(message: string, provider: OAuthClientProvider | undefined): string {
   if (provider && hasRedactor(provider)) return provider.redactSecrets(message);
   return redactBearerTokens(message);
+}
+
+/**
+ * The endpoint-must-be-HTTPS-unless-loopback half of `validateAuthConfig` below,
+ * factored out (final-review I4) so a caller that never builds a `ConnectConfig` — e.g.
+ * `apps/cli`'s `rax mcp login`/`logout`, which drives the SDK's `auth()` orchestrator
+ * directly against a resolved endpoint string — can run the exact same check before
+ * starting any network-facing OAuth flow. Deliberately does NOT include
+ * `validateAuthConfig`'s stdio-transport or headers-ambiguity checks; neither applies to
+ * a bare `--url` endpoint with no transport/headers config.
+ *
+ * RA-owned regardless of SDK behavior (Task 5): the MCP endpoint itself must be HTTPS
+ * whenever `auth` is set (or is about to be driven), unless it's a loopback address —
+ * same convention as `packages/runtime-shim/src/secure-serve.ts`'s `LOOPBACK_HOSTS`.
+ * Distinct from `./auth/hardened-provider.ts`'s HTTPS check, which covers the
+ * authorization/token/registration endpoints a discovered authorization-server
+ * metadata document advertises, not this endpoint. Checked before any transport is
+ * constructed or fetch issued — so an OAuth-protected resource never gets contacted in
+ * plaintext even on the very first request.
+ */
+export function validateAuthEndpointIsHttps(serverName: string, endpoint: string): void {
+  let endpointUrl: URL;
+  try {
+    endpointUrl = new URL(endpoint);
+  } catch {
+    throw new Error(`MCP server "${serverName}": "endpoint" ("${endpoint}") is not a valid URL.`);
+  }
+  const isLoopback = LOOPBACK_HOSTS.has(endpointUrl.hostname.toLowerCase());
+  if (endpointUrl.protocol !== "https:" && !isLoopback) {
+    throw new Error(
+      `MCP server "${serverName}": "auth" requires an HTTPS endpoint (got "${endpointUrl.protocol}//${endpointUrl.host}") unless the host is a loopback address (127.0.0.1/::1/localhost) — refusing a plaintext OAuth-protected connection.`,
+    );
+  }
 }
 
 /**
@@ -121,28 +155,8 @@ function validateAuthConfig(config: ConnectConfig): void {
     );
   }
 
-  // RA-owned regardless of SDK behavior (Task 5): the MCP endpoint itself
-  // must be HTTPS whenever `auth` is set, unless it's a loopback address —
-  // same convention as `packages/runtime-shim/src/secure-serve.ts`'s
-  // `LOOPBACK_HOSTS`. Distinct from `./auth/hardened-provider.ts`'s HTTPS
-  // check, which covers the authorization/token/registration endpoints a
-  // discovered authorization-server metadata document advertises, not this
-  // endpoint. Checked here — before any transport is constructed or fetch
-  // issued — so an OAuth-protected resource never gets contacted in
-  // plaintext even on the very first request.
   if (config.endpoint) {
-    let endpointUrl: URL;
-    try {
-      endpointUrl = new URL(config.endpoint);
-    } catch {
-      throw new Error(`MCP server "${config.name}": "endpoint" ("${config.endpoint}") is not a valid URL.`);
-    }
-    const isLoopback = LOOPBACK_HOSTS.has(endpointUrl.hostname.toLowerCase());
-    if (endpointUrl.protocol !== "https:" && !isLoopback) {
-      throw new Error(
-        `MCP server "${config.name}": "auth" requires an HTTPS endpoint (got "${endpointUrl.protocol}//${endpointUrl.host}") unless the host is a loopback address (127.0.0.1/::1/localhost) — refusing a plaintext OAuth-protected connection.`,
-      );
-    }
+    validateAuthEndpointIsHttps(config.name, config.endpoint);
   }
 }
 

@@ -104,9 +104,11 @@ export interface MCPServerConfig {
   auth?: MCPAuthConfig;
   /**
    * Where OAuth credentials for this server are persisted across
-   * connections. Defaults to an in-memory store (per-process only) when
-   * `auth` is set without one; use `createFileTokenStore()` from
-   * `@reactive-agents/tools` for on-disk persistence.
+   * connections. Defaults to a persistent file store under
+   * `~/.reactive-agents/mcp-auth` (permissions 0700/0600) when `auth` is set
+   * without one — matching `rax mcp login`'s own default store, so a login
+   * run beforehand is actually found. Pass `createMemoryTokenStore()` from
+   * `@reactive-agents/tools` for tests/CI that must not touch disk.
    */
   tokenStore?: MCPTokenStore;
 }

@@ -78,8 +78,15 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { AuthorizationCodeProviderExtra } from "./authorization-code-provider.js";
 
-/** Loopback hostnames exempt from the HTTPS requirement (dev/test convention shared across this plan). */
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+/**
+ * Loopback hostnames exempt from the HTTPS requirement (dev/test convention shared
+ * across this plan). Exported so `mcp-client.ts` (the MCP-endpoint-itself HTTPS check)
+ * and `apps/cli`'s `mcp.ts` (the logout-revocation HTTPS check, final-review C2) use the
+ * exact same set instead of each maintaining their own copy — `packages/runtime-shim`'s
+ * independent copy is a different package with its own reasons to stay separate and is
+ * intentionally not consolidated here.
+ */
+export const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 
 /** Secrets shorter than this are not registered for redaction — avoids clobbering incidental short substrings. */
 const MIN_SECRET_LENGTH = 8;
@@ -116,7 +123,13 @@ export function redactBearerTokens(message: string): string {
   return message.replace(BEARER_PATTERN, `Bearer ${REDACTED}`);
 }
 
-function isHttpsOrLoopback(urlString: string): boolean {
+/**
+ * True when `urlString` is `https:`, or its hostname is a loopback address. Exported
+ * (final-review C2) so `apps/cli`'s `mcp.ts` can apply the identical check to a
+ * discovered `revocation_endpoint` / authorization-server URL before ever POSTing a
+ * refresh token or client secret to it.
+ */
+export function isHttpsOrLoopback(urlString: string): boolean {
   let url: URL;
   try {
     url = new URL(urlString);
@@ -127,6 +140,23 @@ function isHttpsOrLoopback(urlString: string): boolean {
   }
   if (url.protocol === "https:") return true;
   return LOOPBACK_HOSTS.has(url.hostname.toLowerCase());
+}
+
+/**
+ * Final-review I3: `validateIssuerMatch`/`validateHttpsEndpoints` below both no-op when
+ * `state.authorizationServerMetadata` is absent (RFC 8414 discovery 404s) — but the SDK
+ * still falls back to constructing `/authorize`, `/token`, `/register` directly against
+ * `state.authorizationServerUrl` (the RFC 9728 resource-metadata value, or the MCP
+ * server's own origin) in that case. This check runs BEFORE either `!metadata` early
+ * return, so a plaintext authorization-server URL is rejected even with zero discovered
+ * metadata — no credential is ever sent to it.
+ */
+function validateAuthorizationServerUrlIsSecure(state: OAuthDiscoveryState, serverName: string): void {
+  if (!isHttpsOrLoopback(state.authorizationServerUrl)) {
+    throw new Error(
+      `MCP server "${serverName}": authorization-server URL "${state.authorizationServerUrl}" is not HTTPS and is not a loopback address — refusing a plaintext authorization server, even with no discovered metadata document (downgrade-to-plaintext protection)`,
+    );
+  }
 }
 
 function validateIssuerMatch(state: OAuthDiscoveryState, serverName: string): void {
@@ -265,6 +295,7 @@ export function hardenProvider<P extends OAuthClientProvider>(
     // discovery (and therefore `saveDiscoveryState?.()`) on a provider whose
     // `discoveryState()` returns nothing cached, which is every case here.
     saveDiscoveryState: async (state: OAuthDiscoveryState): Promise<void> => {
+      validateAuthorizationServerUrlIsSecure(state, ctx.serverName);
       validateIssuerMatch(state, ctx.serverName);
       validateHttpsEndpoints(state, ctx.serverName);
       await inner.saveDiscoveryState?.(state);

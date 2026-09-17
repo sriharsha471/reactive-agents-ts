@@ -74,6 +74,15 @@ export interface FixtureOverrides {
    * parsing) is what keeps the secret out of the surfaced error.
    */
   tokenErrorEchoesSecret?: boolean;
+  /**
+   * Points the RFC 9728 protected-resource metadata's `authorization_servers[0]` at a
+   * plausible-looking, plaintext, non-loopback hostname that serves NO authorization-server
+   * metadata document at all (unreachable — not merely 404) — used by
+   * `hardening.test.ts`'s final-review I3 regression to prove a plaintext
+   * authorization-server URL is rejected even when RFC 8414 discovery never returns a
+   * metadata document to validate.
+   */
+  authorizationServerUrlWithNoMetadata?: boolean;
 }
 
 export interface RecordedRequest {
@@ -254,7 +263,11 @@ export async function startOAuthMcpFixture(
       record(url.pathname, toStringParams(Object.fromEntries(url.searchParams)));
       return Response.json({
         resource: resourceUrl,
-        authorization_servers: [issuerBaseUrl],
+        authorization_servers: [
+          overrides.authorizationServerUrlWithNoMetadata
+            ? `http://oauth-authz.fixture.invalid:${authServer.port}`
+            : issuerBaseUrl,
+        ],
         bearer_methods_supported: ["header"],
       });
     }

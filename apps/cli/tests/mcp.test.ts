@@ -192,6 +192,15 @@ describe("resolveTarget", () => {
     ).toThrow(/no MCP config found/);
   });
 
+  it("final-review I4: a plaintext, non-loopback --url is rejected before any network request", () => {
+    expect(() => resolveTarget({ kind: "url", value: "http://mcp.example.com/mcp" })).toThrow(/https/i);
+  });
+
+  it("a plaintext loopback --url is still allowed (dev/test convention)", () => {
+    const resolved = resolveTarget({ kind: "url", value: "http://127.0.0.1:4000/mcp" });
+    expect(resolved).toEqual({ url: "http://127.0.0.1:4000/mcp", label: "http://127.0.0.1:4000/mcp" });
+  });
+
   it("<name> not present in an existing config file throws with known names", () => {
     // Reuse a tempdir purely as a scratch location for a config file.
     const path = "/tmp/rax-mcp-test-config-not-found.json";
@@ -407,6 +416,111 @@ describe("mcp logout", () => {
       authServer.stop(true);
     }
   });
+
+  it("final-review C2: a non-HTTPS, non-loopback revocation endpoint is never contacted; a refresh token/client secret never leaves the process", async () => {
+    let attackerHit = false;
+    const attackerServer = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: (req: Request): Response => {
+        if (new URL(req.url).pathname === "/revoke") attackerHit = true;
+        return new Response(null, { status: 200 });
+      },
+    });
+
+    // A plausible-looking, non-loopback hostname the attacker server is
+    // reachable under, IF something actually dials it. Real DNS can't
+    // resolve it, so the `fetch` override below routes it back to the real
+    // (loopback) `attackerServer` — this is what makes `attackerHit`
+    // meaningful: if `tryRevoke` ever called `fetch(revocationEndpoint)`,
+    // this override would deliver that request to `attackerServer` and set
+    // the flag, exactly as a real attacker-controlled endpoint would see it.
+    const attackerHost = `attacker-mcp.fixture.invalid:${attackerServer.port}`;
+
+    const authServer = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: (req: Request): Response => {
+        const url = new URL(req.url);
+        if (url.pathname === "/.well-known/oauth-authorization-server") {
+          return Response.json({
+            issuer: `http://127.0.0.1:${authServer.port}`,
+            authorization_endpoint: `http://127.0.0.1:${authServer.port}/authorize`,
+            token_endpoint: `http://127.0.0.1:${authServer.port}/token`,
+            // The attack: a malicious/misconfigured AS advertises its
+            // revocation endpoint under a plaintext, non-loopback host.
+            revocation_endpoint: `http://${attackerHost}/revoke`,
+            response_types_supported: ["code"],
+          });
+        }
+        return new Response("Not Found", { status: 404 });
+      },
+    });
+
+    const resourceServer = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: (req: Request): Response => {
+        const url = new URL(req.url);
+        if (url.pathname === "/.well-known/oauth-protected-resource") {
+          return Response.json({
+            resource: `http://127.0.0.1:${resourceServer.port}/mcp`,
+            authorization_servers: [`http://127.0.0.1:${authServer.port}`],
+          });
+        }
+        return new Response("Not Found", { status: 404 });
+      },
+    });
+
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("attacker-mcp.fixture.invalid")) {
+        return realFetch(url.replace(attackerHost, `127.0.0.1:${attackerServer.port}`), init);
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+
+    try {
+      const dir = await tempDir();
+      const store = createFileTokenStore(dir);
+      const resourceUrl = `http://127.0.0.1:${resourceServer.port}/mcp`;
+      const key = canonicalResourceKey(resourceUrl);
+      const secretRefreshToken = "refresh-tok-must-not-leak-to-attacker";
+      const secretClientSecret = "client-secret-must-not-leak-to-attacker";
+      await store.set(key, {
+        tokens: { access_token: "access-tok", token_type: "Bearer", refresh_token: secretRefreshToken },
+        clientInformation: { client_id: "some-client", client_secret: secretClientSecret },
+        resourceUrl,
+        savedAt: Date.now(),
+      });
+
+      const capture = captureConsole();
+      try {
+        await runLogout({ target: { kind: "url", value: resourceUrl } }, { store });
+      } finally {
+        capture.restore();
+      }
+
+      expect(attackerHit).toBe(false);
+      expect(await store.get(key)).toBeUndefined();
+      const allOutput = [...capture.stdout, ...capture.stderr].join("\n");
+      expect(allOutput).toContain("Logged out");
+      expect(allOutput).not.toContain(secretRefreshToken);
+      expect(allOutput).not.toContain(secretClientSecret);
+    } finally {
+      globalThis.fetch = realFetch;
+      resourceServer.stop(true);
+      authServer.stop(true);
+      attackerServer.stop(true);
+    }
+  });
+  // RED-ON-CUT proof (see final-review-fix-wave-report.md): removing the
+  // `isHttpsOrLoopback(revocationEndpoint)` check from `mcp.ts`'s
+  // `tryRevoke` makes this test fail — `attackerHit` becomes `true` because
+  // `tryRevoke` actually POSTs `secretRefreshToken`/`secretClientSecret` to
+  // the attacker-controlled endpoint before this test's own `fetch` override
+  // routes that request to `attackerServer`.
 });
 
 // ─── login — end-to-end against the Task 1 fixture ─────────────────────────
@@ -455,4 +569,34 @@ describe("mcp login", () => {
       ),
     ).rejects.toThrow(/timed out/i);
   });
+
+  it("final-review I4: rax mcp login --url http://<non-loopback> is rejected before any network request is attempted", async () => {
+    const store = createMemoryTokenStore();
+    let authorizationUrlCalls = 0;
+
+    await expect(
+      runLogin(
+        {
+          target: { kind: "url", value: "http://mcp.example.com/mcp" },
+          clientId: "cli-login-plaintext-client",
+          noBrowser: true,
+          timeoutMs: 10_000,
+        },
+        {
+          store,
+          onAuthorizationUrl: () => {
+            authorizationUrlCalls++;
+            return Promise.resolve();
+          },
+        },
+      ),
+    ).rejects.toThrow(/https/i);
+
+    expect(authorizationUrlCalls).toBe(0);
+  });
+  // RED-ON-CUT proof (see final-review-fix-wave-report.md): removing the
+  // `validateAuthEndpointIsHttps` call from `resolveTarget` makes this test
+  // fail — `runLogin` proceeds to build a provider and drive the SDK's
+  // `auth()` orchestrator against the plaintext endpoint instead of failing
+  // fast.
 });

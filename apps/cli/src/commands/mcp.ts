@@ -44,7 +44,9 @@ import {
   createAuthProvider,
   createFileTokenStore,
   hasRedactor,
+  isHttpsOrLoopback,
   openBrowser,
+  validateAuthEndpointIsHttps,
   type MCPServer,
   type MCPTokenStore,
   type StoredMcpCredentials,
@@ -108,10 +110,17 @@ export interface ResolvedTarget {
 }
 
 export function resolveTarget(target: MCPTarget, mcpConfigPath?: string): ResolvedTarget {
-  if (target.kind === "url") {
-    return { url: target.value, label: target.value };
-  }
-  return { url: resolveEndpointFromConfig(target.value, mcpConfigPath), label: target.value };
+  const resolved =
+    target.kind === "url"
+      ? { url: target.value, label: target.value }
+      : { url: resolveEndpointFromConfig(target.value, mcpConfigPath), label: target.value };
+  // Final-review I4: `mcp-client.ts`'s `connect()` path enforces HTTPS-unless-loopback
+  // for any `auth`-bearing endpoint via `validateAuthConfig`, but this CLI drives the
+  // SDK's `auth()` orchestrator directly and never goes through `connect()` — so it
+  // never crossed that check. Run the identical check here, before any caller
+  // (`runLogin`/`runLogout`) does anything network-facing with `resolved.url`.
+  validateAuthEndpointIsHttps(resolved.label, resolved.url);
+  return resolved;
 }
 
 // ─── Argument parsing ──────────────────────────────────────────────────────
@@ -342,9 +351,34 @@ async function tryRevoke(resourceUrl: string, stored: StoredMcpCredentials): Pro
     return;
   }
 
+  // Final-review C2: `discoverOAuthServerInfo` is called raw here (not through Task 5's
+  // `hardenProvider`, which only wraps providers built for a live `connect()`), so
+  // nothing else validates the (possibly attacker-controlled) authorization-server URL
+  // or the specific revocation endpoint it advertises before this function would
+  // otherwise POST a live refresh token + client secret to it in plaintext. Both are
+  // checked BEFORE any network call; either failing skips revocation entirely and falls
+  // through to the existing "still delete locally" path.
+  if (!isHttpsOrLoopback(serverInfo.authorizationServerUrl)) {
+    console.error(
+      warn(
+        `Skipping token revocation — authorization server "${serverInfo.authorizationServerUrl}" is not HTTPS and is not a loopback address — deleting local credentials anyway.`,
+      ),
+    );
+    return;
+  }
+
   const metadata = serverInfo.authorizationServerMetadata;
   const revocationEndpoint = metadata && "revocation_endpoint" in metadata ? metadata.revocation_endpoint : undefined;
   if (!revocationEndpoint) return;
+
+  if (!isHttpsOrLoopback(revocationEndpoint)) {
+    console.error(
+      warn(
+        `Skipping token revocation — revocation endpoint is not HTTPS and is not a loopback address — deleting local credentials anyway.`,
+      ),
+    );
+    return;
+  }
 
   const body = new URLSearchParams({ token: refreshToken, token_type_hint: "refresh_token" });
   const clientId = stored.clientInformation?.client_id;

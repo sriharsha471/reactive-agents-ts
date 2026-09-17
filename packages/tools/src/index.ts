@@ -44,7 +44,12 @@ export { makeToolRegistry } from "./registry/tool-registry.js";
 export type { RegisteredTool } from "./registry/tool-registry.js";
 
 // ─── MCP Client ───
-export { makeMCPClient, cleanupMcpTransport, buildMcpSubprocessEnv } from "./mcp/mcp-client.js";
+export {
+  makeMCPClient,
+  cleanupMcpTransport,
+  buildMcpSubprocessEnv,
+  validateAuthEndpointIsHttps,
+} from "./mcp/mcp-client.js";
 
 // ─── MCP Client OAuth (Task 2, 2026-09-17) ───
 export type {
@@ -65,7 +70,11 @@ export {
 // `connect()` uses, instead of re-deriving auth-provider construction.
 export { createAuthProvider } from "./mcp/auth/create-provider.js";
 export { openBrowser } from "./mcp/auth/open-browser.js";
-export { hasRedactor, type HardenedProviderExtras } from "./mcp/auth/hardened-provider.js";
+export {
+  hasRedactor,
+  isHttpsOrLoopback,
+  type HardenedProviderExtras,
+} from "./mcp/auth/hardened-provider.js";
 
 // ─── Scratchpad spill (#47) ───
 export {

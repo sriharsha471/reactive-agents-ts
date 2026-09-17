@@ -122,6 +122,64 @@ describe("MCP client OAuth hardening — gap 3: HTTPS downgrade on discovered en
     expect(error._tag).toBe("MCPConnectionError");
     expect(error.message).toMatch(/https/i);
   });
+
+  it("final-review I3: no AS metadata document at all (404 on discovery) → plaintext non-loopback authorization-server URL still refused", async () => {
+    const f = await fixture({
+      clients: [{ clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, redirectUris: [] }],
+    });
+    f.configure({ authorizationServerUrlWithNoMetadata: true });
+    const store = createMemoryTokenStore();
+
+    // The fake `oauth-authz.fixture.invalid` host used by
+    // `authorizationServerUrlWithNoMetadata` isn't DNS-resolvable — fine for
+    // the (already-covered) "endpoints advertised under it" case, since that
+    // string only ever needs to appear inside a JSON document, never be
+    // fetched. This test needs RFC 8414 discovery to actually complete with
+    // "no metadata found" (a clean 404), not fail on DNS resolution (an
+    // uncontrolled network error), so every request aimed at that host is
+    // faked to 404 here — everything else (the real fixture's resource
+    // server and issuer) still goes over the real loopback network
+    // unmodified.
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("oauth-authz.fixture.invalid")) {
+        return new Response("Not Found", { status: 404 });
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+
+    try {
+      const error = await Effect.runPromise(
+        Effect.gen(function* () {
+          const client = yield* makeMCPClient;
+          return yield* client
+            .connect({
+              name: "no-as-metadata",
+              transport: "streamable-http",
+              endpoint: f.resourceUrl,
+              auth: { type: "client_credentials", clientId: CLIENT_ID, clientSecret: CLIENT_SECRET },
+              tokenStore: store,
+            })
+            .pipe(Effect.flip);
+        }),
+      );
+
+      expect(error._tag).toBe("MCPConnectionError");
+      expect(error.message).toMatch(/authorization-server url|plaintext/i);
+      expect(f.requests.some((r) => r.path === "/token")).toBe(false);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+  // RED-ON-CUT proof: removing `hardened-provider.ts`'s
+  // `validateAuthorizationServerUrlIsSecure` call from `saveDiscoveryState`
+  // makes this test fail — with no discovered AS metadata document,
+  // `validateIssuerMatch`/`validateHttpsEndpoints` both no-op (their own
+  // `!metadata` early return), so nothing rejects the plaintext,
+  // non-loopback `oauth-authz.fixture.invalid` authorization-server URL and
+  // the connect attempt instead proceeds (or fails for an unrelated reason)
+  // instead of failing closed with a clear config error.
 });
 
 describe("MCP client OAuth hardening — SDK's own PKCE enforcement (Task 0: not a gap, confirming end-to-end)", () => {

@@ -306,6 +306,11 @@ When connecting to MCP (Model Context Protocol) tool servers, Reactive Agents su
 | `tasks/cancel` | Cancel an in-progress task | `{ id: string }` |
 | `agent/card` | Get the agent's card via RPC | — |
 
+**`tasks/cancel` limitation:** canceling a task marks it `canceled` in the
+task store immediately, but does not yet interrupt the underlying agent run
+— the run keeps executing in the background to completion regardless. Full
+cancellation (interrupting the in-flight run) is a planned follow-up.
+
 ## Error Types
 
 | Error | When |

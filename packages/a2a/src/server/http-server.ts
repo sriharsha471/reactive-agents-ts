@@ -38,7 +38,19 @@ const normalizeBasePath = (basePath?: string): string => {
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 };
 
-export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor, basePath?: string) =>
+export interface A2AHttpServerOptions {
+  /** Bind hostname. Defaults to `RA_A2A_HOST` env, then `secureServe`'s own loopback default. */
+  readonly hostname?: string;
+  /** Bearer token required on every request. Defaults to `RA_A2A_TOKEN` env. */
+  readonly token?: string;
+}
+
+export const createA2AHttpServer = (
+  port: number = 3000,
+  executor?: TaskExecutor,
+  basePath?: string,
+  serverOptions?: A2AHttpServerOptions,
+) =>
   Layer.effect(
     A2AHttpServer,
     Effect.gen(function* () {
@@ -73,7 +85,17 @@ export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor
       const handleMessageStream = (params: unknown, agentCard: AgentCard) =>
         Effect.gen(function* () {
           const sendParams = params as SendMessageParams;
-          const task = yield* taskHandler.handleMessageSend(sendParams);
+          // Force blocking mode regardless of what the caller sent: Task 1's
+          // spec-shaped default is non-blocking, but this handler joins the
+          // task's events into a single SSE response after the fact (it does
+          // not actually stream incremental events) — without blocking it
+          // would emit one `working`/`final:false` event and close,
+          // stranding the caller with no result (final-review I1). This
+          // restores the previously-described "await full completion" shape.
+          const task = yield* taskHandler.handleMessageSend({
+            ...sendParams,
+            configuration: { ...sendParams.configuration, blocking: true },
+          });
 
           // Build SSE events for the completed task
           const events: StreamEvent[] = [
@@ -178,12 +200,16 @@ export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor
           Effect.gen(function* () {
             const agentCard = yield* server.getAgentCard();
 
-            // Secure-by-default ingress (F4): binds loopback unless RA_A2A_HOST
-            // is set, and refuses a non-loopback bind without RA_A2A_TOKEN.
+            // Secure-by-default ingress (F4): binds loopback unless a hostname
+            // is given, and refuses a non-loopback bind without a token.
+            // Explicit `serverOptions` (per-call, e.g. from `serveA2A()`)
+            // take priority; RA_A2A_HOST/RA_A2A_TOKEN env vars are only the
+            // fallback default (used by `rax serve`), never a global mutation
+            // — each call to this factory is isolated from every other.
             bunServer = yield* Effect.promise(() => secureServe({
               port,
-              hostname: process.env.RA_A2A_HOST,
-              token: process.env.RA_A2A_TOKEN,
+              hostname: serverOptions?.hostname ?? process.env.RA_A2A_HOST,
+              token: serverOptions?.token ?? process.env.RA_A2A_TOKEN,
               fetch: async (req) => {
                 const url = new URL(req.url);
 

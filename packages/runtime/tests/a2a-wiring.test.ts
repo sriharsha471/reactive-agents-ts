@@ -119,4 +119,42 @@ describe("agent.serveA2A()", () => {
       await handle.stop();
     }
   });
+
+  // Final-review C1: `serveA2A({token})` used to mutate `process.env`
+  // (`RA_A2A_TOKEN`/`RA_A2A_HOST`) and never restore it, so a later
+  // `serveA2A()` call with NO options in the same process would silently
+  // inherit the previous call's hostname/token requirement. hostname stays
+  // loopback here (binding non-loopback in a test is impractical/unsafe) —
+  // the token-leak half of the bug is fully exercised by requiring auth on
+  // the first server and asserting its ABSENCE is not inherited by the
+  // second, options-less server.
+  it("RED-ON-CUT: a later serveA2A() with no options does not inherit a prior call's token requirement", async () => {
+    const agent1 = await ReactiveAgents.create()
+      .withName("a2a-leak-agent-1")
+      .withProvider("test")
+      .build();
+
+    const handle1 = await agent1.serveA2A({ port: 0, hostname: "127.0.0.1", token: "tok-1" });
+
+    // Sanity: the first server actually enforces its own token.
+    const unauthed = await fetch(`http://127.0.0.1:${handle1.port}/.well-known/agent.json`);
+    expect(unauthed.status).toBe(401);
+
+    await handle1.stop();
+
+    const agent2 = await ReactiveAgents.create()
+      .withName("a2a-leak-agent-2")
+      .withProvider("test")
+      .build();
+
+    // No hostname/token passed at all — must NOT require agent1's token.
+    const handle2 = await agent2.serveA2A({ port: 0 });
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${handle2.port}/.well-known/agent.json`);
+      expect(res.status).toBe(200);
+    } finally {
+      await handle2.stop();
+    }
+  });
 });

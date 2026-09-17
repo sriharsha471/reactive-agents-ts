@@ -1,15 +1,14 @@
-import { Layer } from "effect";
-import { A2AServer, createA2AServer, createA2AHttpServer } from "./server/index.js";
-import { A2AClient, createA2AClient } from "./client/index.js";
-import type { AgentCard } from "./types.js";
+import { createA2AClient } from "./client/index.js";
 import type { ClientConfig } from "./client/a2a-client.js";
 
-export const createA2AServerLayer = (agentCard: AgentCard, port?: number) =>
-  createA2AHttpServer(port ?? 3000).pipe(
-    Layer.provide(createA2AServer(agentCard)),
-  );
+// `createA2AServerLayer`/`A2AServerLive` (built `createA2AHttpServer` with NO
+// executor) were removed here — their only caller, `A2aExtraLayer`, was
+// deleted in the A2A repair plan's Task 2, and without an executor a task
+// handler built from them silently accepted `message/send` and left the task
+// stuck in `submitted` forever with no error (see `task-handler.ts`'s
+// `executor` check). `serveA2A()` (`packages/runtime`) is the real, executor-
+// wired replacement. See the final-review-fix report for detail.
 
 export const createA2AClientLayer = (config: ClientConfig) => createA2AClient(config);
 
-export const A2AServerLive = (agentCard: AgentCard) => createA2AServer(agentCard);
 export const A2AClientLive = (config: ClientConfig) => createA2AClient(config);

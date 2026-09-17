@@ -1048,12 +1048,16 @@ export class ReactiveAgent<TOut = unknown> {
             url: `http://${options?.hostname ?? '127.0.0.1'}:${port}${basePath ?? ''}`,
         })
 
-        const serverLayer = createA2AHttpServer(port, executor, basePath).pipe(
-            Layer.provide(createA2AServer(agentCard)),
-        )
-
-        if (options?.token) process.env['RA_A2A_TOKEN'] = options.token
-        if (options?.hostname) process.env['RA_A2A_HOST'] = options.hostname
+        // Pass hostname/token as explicit per-call parameters (never a
+        // process.env mutation — that would leak across concurrent/sequential
+        // serveA2A() calls in the same process, see the A2A repair plan's
+        // final-review C1 finding). createA2AHttpServer falls back to
+        // RA_A2A_HOST/RA_A2A_TOKEN itself when neither is given here, which
+        // preserves `rax serve`'s env-driven behavior.
+        const serverLayer = createA2AHttpServer(port, executor, basePath, {
+            hostname: options?.hostname,
+            token: options?.token,
+        }).pipe(Layer.provide(createA2AServer(agentCard)))
 
         const { boundPort, stop } = await Effect.runPromise(
             Effect.gen(function* () {

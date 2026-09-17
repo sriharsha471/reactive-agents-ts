@@ -24,7 +24,7 @@ const HELP = `
     --help              Show this help
 `.trimEnd();
 
-export function runServe(argv: string[]) {
+export async function runServe(argv: string[]) {
   const args = argv.slice();
 
   if (args.includes("--help") || args.includes("-h")) {
@@ -102,8 +102,12 @@ export function runServe(argv: string[]) {
   if (withReasoning) builder = builder.withReasoning();
   if (enableMemory) builder = memoryEnhanced ? builder.withMemory({ tier: "enhanced" }) : builder.withMemory();
 
-  // Build the agent and start the A2A server
-  startServer(builder.build(), name, port);
+  // Build the agent and start the A2A server. Awaited so a rejection from
+  // either the build step or `agent.serveA2A()` itself (e.g. EADDRINUSE, a
+  // `secureServe` non-loopback refusal) surfaces through the command's
+  // normal `fail(...)` + exit path instead of becoming an unhandled promise
+  // rejection (final-review Minor #3).
+  await startServer(builder.build(), name, port);
 }
 
 /**
@@ -139,12 +143,18 @@ async function startServer(
   const hostname = readEnvWithDeprecatedFallback("RA_A2A_HOST", "RA_SERVE_HOST");
   const token = readEnvWithDeprecatedFallback("RA_A2A_TOKEN", "RA_SERVE_TOKEN");
 
-  const handle = await agent.serveA2A({
-    port,
-    description: `A2A agent: ${name}`,
-    hostname,
-    token,
-  });
+  let handle: Awaited<ReturnType<ReactiveAgent["serveA2A"]>>;
+  try {
+    handle = await agent.serveA2A({
+      port,
+      description: `A2A agent: ${name}`,
+      hostname,
+      token,
+    });
+  } catch (err) {
+    console.error(fail(`Failed to start A2A server: ${err}`));
+    process.exit(1);
+  }
 
   const boundHost = hostname ?? "127.0.0.1";
   console.log("");

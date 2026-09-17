@@ -146,4 +146,62 @@ describe("createRemoteAgentToolRegistration — send→poll→result flow", () =
     // Failure carries no artifacts, so extractArtifactText correctly yields undefined.
     expect(result.result).toBeUndefined();
   });
+
+  // Final-review C2: an executor slower than getTask's poll budget used to
+  // return `{status: "working", result: undefined}` as if it were a valid
+  // (empty) result — no error, nothing downstream noticed.
+  //
+  // `sendMessage` now sends `configuration: {blocking: true}`, and this repo's
+  // own server (Task 1) honors it — so against the real, compliant server the
+  // fast path (sendMessage itself awaits completion) absorbs a slow executor
+  // and getTask's poll loop never has anything left to exhaust. To exercise
+  // the poll-exhaustion path itself (the defensive fallback for a remote peer
+  // that ignores `blocking`, or a task queried independently of this client's
+  // own sendMessage), this test uses a minimal hand-rolled server that always
+  // reports `working` regardless of what it's asked. A small injected
+  // `pollBudgetMs` keeps the test fast; production callers get the real
+  // (much larger) default budget.
+  test("a task that never reaches a terminal state fails loudly instead of returning a silent working result", async () => {
+    const neverTerminalServer = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const body = (await req.json()) as { id: unknown; method: string };
+        if (body.method === "message/send") {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: {
+              id: "stuck-task",
+              contextId: "ctx",
+              status: { state: "working", timestamp: new Date().toISOString() },
+              kind: "task",
+            },
+          });
+        }
+        // tasks/get — always reports `working`, regardless of how long polled.
+        return Response.json({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: {
+            id: "stuck-task",
+            contextId: "ctx",
+            status: { state: "working", timestamp: new Date().toISOString() },
+            kind: "task",
+          },
+        });
+      },
+    });
+    activeStop = async () => {
+      neverTerminalServer.stop(true);
+    };
+
+    const registration = createRemoteAgentToolRegistration(
+      { name: "remote-stuck", remoteUrl: `http://localhost:${neverTerminalServer.port}` },
+      { ...realDeps, pollBudgetMs: 300 },
+    );
+
+    await expect(Effect.runPromise(registration.handler({ message: "Hello" }))).rejects.toThrow(
+      /did not reach a terminal state/,
+    );
+  });
 });

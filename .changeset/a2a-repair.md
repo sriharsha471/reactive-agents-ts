@@ -27,9 +27,20 @@ Protocol fixes:
   in `submitted`/`working` state and the caller polls `tasks/get`.
 - `tasks/cancel` now finds the task it's asked to cancel — it previously read
   from a different task store than `message/send` wrote to and always
-  reported `TASK_NOT_FOUND`.
+  reported `TASK_NOT_FOUND`. This fixes lookup only: canceling a task
+  currently marks it `canceled` in the store without yet interrupting the
+  underlying agent run; the forked run completes in the background
+  regardless. Full cancellation (retaining a fiber handle to interrupt) is a
+  separate, out-of-scope follow-up.
 
 Client fixes: both `@reactive-agents/a2a`'s `A2AClient` and the runtime's
 `.withRemoteAgent()` / `.withAgentTool()` now read the real `A2ATask` shape
 (`task.status.state`, `task.artifacts`) instead of the old bespoke response
 shape they previously (and incorrectly) assumed.
+
+Env var rename: `rax serve`'s bind-hostname and auth-token env vars are now
+`RA_A2A_HOST`/`RA_A2A_TOKEN` (previously `RA_SERVE_HOST`/`RA_SERVE_TOKEN`),
+matching the name `agent.serveA2A()` / `@reactive-agents/a2a`'s HTTP server
+already read directly. The old names still work as a deprecated fallback
+(with a one-line stderr warning) — not dropped, since existing deployments
+may set them.

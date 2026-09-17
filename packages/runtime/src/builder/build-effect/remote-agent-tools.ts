@@ -82,6 +82,14 @@ export interface RemoteAgentToolDeps {
     agentCardUrl: string,
   ) => Promise<TaskResult>;
   readonly egress?: AgentEgressConfig;
+  /**
+   * Total budget (ms) `getTask` polls for a terminal task state before
+   * failing loudly. Defaults to 120_000 (2 min) — the same convention
+   * `spawn-agent`'s `timeoutMs` uses for a single remote-agent-shaped call
+   * (`packages/tools/src/adapters/agent-tool-adapter.ts`). Test-only override;
+   * production callers should not need to set this.
+   */
+  readonly pollBudgetMs?: number;
 }
 
 export const createRemoteAgentToolRegistration = (
@@ -124,6 +132,12 @@ export const createRemoteAgentToolRegistration = (
                     },
                   ],
                 },
+                // Ask the remote server to await full completion (Task 1's
+                // spec-shaped default is non-blocking) so the fast path
+                // returns a terminal task directly instead of depending on
+                // getTask's poll loop below. See the A2A repair plan's
+                // final-review C2 finding.
+                configuration: { blocking: true },
               },
               id: crypto.randomUUID(),
             }),
@@ -167,11 +181,19 @@ export const createRemoteAgentToolRegistration = (
             return task;
           };
 
-          // Poll until the task reaches a terminal state — Task 1's
-          // non-blocking `message/send` default means the task may still
-          // be `submitted`/`working` on the first read.
-          const maxAttempts = 30;
+          // Poll until the task reaches a terminal state. `sendMessage` now
+          // asks for `configuration.blocking: true`, so a compliant server
+          // already returns a terminal task before this loop runs at all —
+          // this poll is the fallback path (server ignored blocking, or a
+          // task queried independently of this client's own sendMessage).
+          // Budget is deliberately generous (2 min default, matching
+          // spawn-agent's `timeoutMs` convention in agent-tool-adapter.ts)
+          // because a real multi-step remote agent run can legitimately take
+          // that long — exhausting it must FAIL loudly rather than silently
+          // hand back a `working` status with no result (final-review C2).
           const pollIntervalMs = 200;
+          const pollBudgetMs = deps.pollBudgetMs ?? 120_000;
+          const maxAttempts = Math.max(1, Math.ceil(pollBudgetMs / pollIntervalMs));
           let lastTask: A2ATask = await fetchTask();
           for (
             let attempt = 1;
@@ -180,6 +202,13 @@ export const createRemoteAgentToolRegistration = (
           ) {
             await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
             lastTask = await fetchTask();
+          }
+
+          if (!TERMINAL_TASK_STATES.has(lastTask.status.state)) {
+            throw new Error(
+              `A2A task ${params.id} did not reach a terminal state within ${pollBudgetMs}ms ` +
+                `(last observed status: "${lastTask.status.state}")`,
+            );
           }
 
           return { status: lastTask.status.state, result: extractArtifactText(lastTask) };

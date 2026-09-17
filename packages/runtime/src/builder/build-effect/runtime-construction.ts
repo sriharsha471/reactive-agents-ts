@@ -41,7 +41,6 @@ import type {
   GuardrailsOptions,
   VerificationOptions,
   ObservabilityOptions,
-  A2AOptions,
   GatewayOptions,
   ModelRoutingOptions,
 } from "../types.js";
@@ -153,7 +152,6 @@ export interface BuilderRuntimeStateView {
   readonly _environmentContext?: Record<string, string>;
   readonly _mcpServers: MCPServerConfig[];
   readonly _reasoningOptions?: ReasoningOptions;
-  readonly _a2aOptions?: A2AOptions;
   readonly _gatewayOptions?: GatewayOptions;
   readonly _contextProfile?: Partial<ContextProfile>;
   readonly _resultCompression?: ResultCompressionConfig;

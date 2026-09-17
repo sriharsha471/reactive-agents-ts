@@ -46,8 +46,19 @@ export const createTaskHandler = (store: TaskStore, executor?: TaskExecutor) => 
 
       yield* store.setTask(submittedTask);
 
+      // No executor configured: fail loudly instead of silently accepting
+      // the task and leaving it stuck in `submitted` forever with no error
+      // (final-review I2). `createA2AHttpServer`'s `executor` parameter
+      // stays optional — a card-only/discovery server is a legitimate
+      // configuration — but any real `message/send` against one is a caller
+      // mistake that should surface immediately, not hang.
       if (!executor) {
-        return submittedTask;
+        return yield* Effect.fail(
+          new A2AError({
+            code: "INTERNAL_ERROR",
+            message: "No executor configured for this A2A server; message/send cannot run tasks.",
+          }),
+        );
       }
 
       const workingTask: A2ATask = {

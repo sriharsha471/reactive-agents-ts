@@ -2600,7 +2600,6 @@ export class ReactiveAgentBuilder<TOut = unknown> {
             const mcpServers = [...self._mcpServers]
             const toolsOptions = self._toolsOptions
             const promptsOptions = self._promptsOptions
-            const a2aOptions = self._a2aOptions
             const gatewayOptions = self._gatewayOptions
             const agentTools = self._agentTools
             const allowDynamicSubAgents = self._allowDynamicSubAgents
@@ -2809,7 +2808,6 @@ export class ReactiveAgentBuilder<TOut = unknown> {
     private static readonly _assertRuntimeStateViewShape = (
         self: ReactiveAgentBuilder<any>
     ): BuilderRuntimeStateView => ({
-        _a2aOptions: self._a2aOptions,
         _adaptiveHarness: self._adaptiveHarness,
         _approvalPolicy: self._approvalPolicy,
         _behavioralContract: self._behavioralContract,

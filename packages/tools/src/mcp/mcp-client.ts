@@ -35,6 +35,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { MCPServer } from "../types.js";
 import { MCPConnectionError, ToolExecutionError } from "../errors.js";
 import { createAuthProvider } from "./auth/create-provider.js";
+import { hasRedactor, redactBearerTokens } from "./auth/hardened-provider.js";
 import { createMemoryTokenStore } from "./auth/token-store.js";
 import type { MCPTokenStore } from "./auth/types.js";
 
@@ -74,6 +75,23 @@ function getDefaultTokenStore(): MCPTokenStore {
   return defaultTokenStore;
 }
 
+/** Loopback hostnames exempt from the HTTPS-for-auth requirement below. */
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+
+/**
+ * Sanitizes an error message before it crosses into `MCPConnectionError` /
+ * `ToolExecutionError`. Uses `provider`'s observed-secret redactor when one
+ * is available (every provider `createAuthProvider` builds from RA's own
+ * config exposes one — see `./auth/hardened-provider.ts`); falls back to a
+ * generic `Bearer <token>`-pattern strip otherwise (e.g. a caller-supplied
+ * `type: "provider"`, which this task does not wrap, or a connect failure
+ * that never got far enough to construct a provider at all).
+ */
+function sanitizeErrorMessage(message: string, provider: OAuthClientProvider | undefined): string {
+  if (provider && hasRedactor(provider)) return provider.redactSecrets(message);
+  return redactBearerTokens(message);
+}
+
 /**
  * Config-time validation for `config.auth` — must run before any connection
  * attempt (network fetch or subprocess spawn), per the plan's "ambiguous
@@ -102,6 +120,30 @@ function validateAuthConfig(config: ConnectConfig): void {
       `MCP server "${config.name}": both "auth" and a "headers.Authorization" entry are set — ambiguous credential source. Use one or the other, not both.`,
     );
   }
+
+  // RA-owned regardless of SDK behavior (Task 5): the MCP endpoint itself
+  // must be HTTPS whenever `auth` is set, unless it's a loopback address —
+  // same convention as `packages/runtime-shim/src/secure-serve.ts`'s
+  // `LOOPBACK_HOSTS`. Distinct from `./auth/hardened-provider.ts`'s HTTPS
+  // check, which covers the authorization/token/registration endpoints a
+  // discovered authorization-server metadata document advertises, not this
+  // endpoint. Checked here — before any transport is constructed or fetch
+  // issued — so an OAuth-protected resource never gets contacted in
+  // plaintext even on the very first request.
+  if (config.endpoint) {
+    let endpointUrl: URL;
+    try {
+      endpointUrl = new URL(config.endpoint);
+    } catch {
+      throw new Error(`MCP server "${config.name}": "endpoint" ("${config.endpoint}") is not a valid URL.`);
+    }
+    const isLoopback = LOOPBACK_HOSTS.has(endpointUrl.hostname.toLowerCase());
+    if (endpointUrl.protocol !== "https:" && !isLoopback) {
+      throw new Error(
+        `MCP server "${config.name}": "auth" requires an HTTPS endpoint (got "${endpointUrl.protocol}//${endpointUrl.host}") unless the host is a loopback address (127.0.0.1/::1/localhost) — refusing a plaintext OAuth-protected connection.`,
+      );
+    }
+  }
 }
 
 interface ActiveConnection {
@@ -116,6 +158,15 @@ interface ActiveConnection {
    * daemon keeps it alive until explicitly told to stop it.
    */
   dockerContainerName?: string;
+  /**
+   * The OAuth provider used to connect, when `config.auth` was set. Kept so
+   * later error paths (`callTool`, `disconnect`) can sanitize their error
+   * messages via the provider's redactor (see `sanitizeErrorMessage` above) —
+   * `connect`'s own errors are sanitized inside `connectHttpLike` instead,
+   * since that's the only place still holding a reference to a provider that
+   * never made it into a successful `ActiveConnection`.
+   */
+  authProvider?: OAuthClientProvider;
 }
 
 // ─── Module-level State ───────────────────────────────────────────────────────
@@ -898,12 +949,20 @@ async function connectHttpLike(
         /* best-effort cleanup; the original error wins */
       });
     }
+    // Sanitize in place (rather than constructing a new Error) so any
+    // `instanceof` check a caller might still run against `err` (there are
+    // none left at this point in this file, but this is the last point that
+    // still has `authProvider` in scope) keeps working — only `.message`
+    // changes, which is all `connect`'s `Effect.tryPromise` catch reads.
+    if (err instanceof Error) {
+      err.message = sanitizeErrorMessage(err.message, authProvider);
+    }
     throw err;
   }
 
   mcpDebug(`[MCP init] "${config.name}" — connected via ${effectiveTransport}`);
   const server = await buildMCPServer(config.name, effectiveTransport, config.endpoint, config, sdkClient);
-  return { client: sdkClient, transport, server };
+  return { client: sdkClient, transport, server, authProvider };
 }
 
 // ─── MCP Client (Effect-TS facade) ───────────────────────────────────────────
@@ -975,10 +1034,15 @@ export const makeMCPClient = Effect.gen(function* () {
         }
         return result;
       },
-      catch: (e) =>
-        e instanceof MCPConnectionError
-          ? e
-          : new ToolExecutionError({ message: e instanceof Error ? e.message : String(e), toolName, input: args }),
+      catch: (e) => {
+        if (e instanceof MCPConnectionError) return e;
+        const rawMessage = e instanceof Error ? e.message : String(e);
+        return new ToolExecutionError({
+          message: sanitizeErrorMessage(rawMessage, conn.authProvider),
+          toolName,
+          input: args,
+        });
+      },
     });
   };
 
@@ -996,7 +1060,11 @@ export const makeMCPClient = Effect.gen(function* () {
         }
       },
       catch: (e) =>
-        new MCPConnectionError({ message: e instanceof Error ? e.message : String(e), serverName, transport: "unknown" }),
+        new MCPConnectionError({
+          message: sanitizeErrorMessage(e instanceof Error ? e.message : String(e), undefined),
+          serverName,
+          transport: "unknown",
+        }),
     }).pipe(
       Effect.tap(() =>
         Ref.update(serversRef, (m) => {

@@ -65,6 +65,15 @@ export interface FixtureOverrides {
   omitIssOnRedirect?: boolean;
   /** `/authorize`'s redirect includes an `iss` value that does not match this AS's real issuer. */
   wrongIssOnRedirect?: boolean;
+  /**
+   * `/token`'s client-authentication-failure response is a raw, non-JSON
+   * `text/plain` body that echoes the submitted `client_id`/`client_secret`
+   * verbatim, instead of a clean RFC 6749 JSON error — emulates a
+   * non-compliant authorization server so a later task's test can prove RA's
+   * own error-message redaction (not the fixture, not the SDK's JSON error
+   * parsing) is what keeps the secret out of the surfaced error.
+   */
+  tokenErrorEchoesSecret?: boolean;
 }
 
 export interface RecordedRequest {
@@ -541,6 +550,12 @@ export async function startOAuthMcpFixture(
     // (Real-world equivalent: RFC 6749 §4.4 + §3.2.1 "MUST authenticate".)
     const registered = clients.get(clientId);
     if (!registered || registered.clientSecret === undefined || providedSecret !== registered.clientSecret) {
+      if (overrides.tokenErrorEchoesSecret) {
+        return new Response(
+          `Client authentication failed for client_id=${clientId} client_secret=${providedSecret ?? ""}`,
+          { status: 400, headers: { "content-type": "text/plain" } },
+        );
+      }
       return jsonError(400, "invalid_client", "client authentication failed");
     }
 

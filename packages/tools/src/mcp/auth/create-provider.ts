@@ -30,6 +30,7 @@ import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.
 import type { OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { MCPServer } from "../../types.js";
 import { createAuthorizationCodeProvider } from "./authorization-code-provider.js";
+import { hardenProvider } from "./hardened-provider.js";
 import { canonicalResourceKey } from "./token-store.js";
 import type { MCPTokenStore } from "./types.js";
 
@@ -159,7 +160,12 @@ export function createAuthProvider(
         clientSecret: config.clientSecret,
         scope: config.scope,
       });
-      return withPersistence(inner, store, requireEndpoint(server));
+      // Hardened per Task 5 — closes Task 0's issuer-mix-up / HTTPS-downgrade
+      // gaps and provides the error-message redactor `mcp-client.ts` uses.
+      // Not applied to `type: "provider"` (see that case's own comment).
+      return hardenProvider(withPersistence(inner, store, requireEndpoint(server)), {
+        serverName: server.name,
+      });
     }
 
     case "private_key_jwt": {
@@ -169,11 +175,15 @@ export function createAuthProvider(
         algorithm: config.algorithm,
         scope: config.scope,
       });
-      return withPersistence(inner, store, requireEndpoint(server));
+      return hardenProvider(withPersistence(inner, store, requireEndpoint(server)), {
+        serverName: server.name,
+      });
     }
 
     case "authorization_code":
-      return createAuthorizationCodeProvider(server, config, store);
+      return hardenProvider(createAuthorizationCodeProvider(server, config, store), {
+        serverName: server.name,
+      });
 
     default: {
       // Exhaustiveness guard: every known `MCPAuthConfig["type"]` has a

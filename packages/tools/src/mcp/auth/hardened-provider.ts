@@ -37,9 +37,15 @@
  *    test. `state.authorizationServerUrl` is the URL discovery actually used
  *    (RFC 9728 `authorization_servers[0]`, or the MCP server's own origin as
  *    a fallback); `state.authorizationServerMetadata.issuer` is the value
- *    that server claims. RFC 8414 §2 requires them to match exactly — no
- *    normalization is applied here (no trailing-slash tolerance), matching
- *    the fixture's exact-string issuer values and erring toward fail-closed.
+ *    that server claims. RFC 8414 §2 requires them to match — compared via
+ *    `normalizeIssuerUrl` (both sides re-serialized through WHATWG `URL`) so
+ *    a trailing-slash-only difference is not treated as a mismatch. Found
+ *    live 2026-09-17 against Google's real Home MCP server: Google's issuer
+ *    is published as `https://accounts.google.com` (no trailing slash) while
+ *    the discovered authorization-server URL was `https://accounts.google.com/`
+ *    — a naive `!==` comparison refused every server exhibiting this
+ *    well-known Google OAuth/OIDC quirk. A genuine scheme/host/port/path
+ *    difference still fails to match after normalization and is refused.
  *
  * 2. **HTTPS downgrade (Task 0 gap 3):** the SDK's `SafeUrlSchema` only
  *    blocks `javascript:`/`data:`/`vbscript:` on discovered endpoints —
@@ -159,10 +165,29 @@ function validateAuthorizationServerUrlIsSecure(state: OAuthDiscoveryState, serv
   }
 }
 
+/**
+ * Normalizes a URL string for issuer comparison. WHATWG `URL` always
+ * serializes a path-less origin with a trailing `/` (`new URL("https://x.com").toString()
+ * === "https://x.com/"`), but RFC 8414 issuer values in the wild are commonly
+ * published WITHOUT one (e.g. Google's `https://accounts.google.com`) — a
+ * naive `!==` comparison treats every such server as a mix-up attack. Both
+ * sides are re-serialized through the same parser so only a real
+ * scheme/host/port/path difference trips the check. Falls back to the raw
+ * string on a genuinely malformed URL, which then simply fails to match
+ * (fails closed).
+ */
+function normalizeIssuerUrl(value: string): string {
+  try {
+    return new URL(value).toString();
+  } catch {
+    return value;
+  }
+}
+
 function validateIssuerMatch(state: OAuthDiscoveryState, serverName: string): void {
   const metadata = state.authorizationServerMetadata;
   if (!metadata) return;
-  if (metadata.issuer !== state.authorizationServerUrl) {
+  if (normalizeIssuerUrl(metadata.issuer) !== normalizeIssuerUrl(state.authorizationServerUrl)) {
     throw new Error(
       `MCP server "${serverName}": authorization-server metadata issuer "${metadata.issuer}" does not match the authorization-server URL "${state.authorizationServerUrl}" it was discovered from — refusing (RFC 8414 issuer mix-up protection)`,
     );

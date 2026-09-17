@@ -63,6 +63,39 @@ describe("MCP client OAuth hardening — gap 1: authorization-server issuer mix-
   // `hardened-provider.ts`'s `validateIssuerMatch` call from
   // `saveDiscoveryState` makes this test fail — connect succeeds instead
   // (the SDK happily proceeds with the attacker-controlled-looking issuer).
+
+  // Post-merge live-verification finding (2026-09-17, against Google Home
+  // MCP): Google's real AS metadata issuer ("https://accounts.google.com")
+  // has no trailing slash, but the resource's advertised authorization
+  // server URL was normalized to one ("https://accounts.google.com/") —
+  // the naive `!==` comparison this test's sibling above pins treated that
+  // as a mix-up and refused every real-world server exhibiting this
+  // pattern. `normalizeIssuerUrl` (hardened-provider.ts) fixes it; this
+  // test is the fixture-based regression pin for that fix, not just a
+  // manual live check.
+  it("trailing-slash-only difference between issuer and authorization-server URL is not a mismatch", async () => {
+    const f = await fixture({
+      clients: [{ clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, redirectUris: [] }],
+    });
+    f.configure({ authorizationServerUrlTrailingSlash: true });
+    const store = createMemoryTokenStore();
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* makeMCPClient;
+        return yield* client.connect({
+          name: "issuer-trailing-slash",
+          transport: "streamable-http",
+          endpoint: f.resourceUrl,
+          auth: { type: "client_credentials", clientId: CLIENT_ID, clientSecret: CLIENT_SECRET },
+          tokenStore: store,
+        });
+      }),
+    );
+
+    expect(result.status).toBe("connected");
+    expect(f.requests.some((r) => r.path === "/token")).toBe(true);
+  });
 });
 
 describe("MCP client OAuth hardening — gap 3: HTTPS downgrade on discovered endpoints", () => {

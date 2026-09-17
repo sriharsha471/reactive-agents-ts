@@ -83,6 +83,17 @@ export interface FixtureOverrides {
    * metadata document to validate.
    */
   authorizationServerUrlWithNoMetadata?: boolean;
+  /**
+   * Advertises the authorization server with a trailing slash in the
+   * resource's RFC 9728 `authorization_servers[0]` entry, while the AS's
+   * own RFC 8414 metadata `issuer` field has none — reproducing a real,
+   * longstanding discrepancy in Google's OAuth/OIDC metadata (their issuer
+   * is published as `https://accounts.google.com`, no trailing slash, while
+   * other Google surfaces reference the same authorization server as
+   * `https://accounts.google.com/`). A same-origin, trailing-slash-only
+   * difference must NOT be treated as an issuer mix-up.
+   */
+  authorizationServerUrlTrailingSlash?: boolean;
 }
 
 export interface RecordedRequest {
@@ -266,7 +277,9 @@ export async function startOAuthMcpFixture(
         authorization_servers: [
           overrides.authorizationServerUrlWithNoMetadata
             ? `http://oauth-authz.fixture.invalid:${authServer.port}`
-            : issuerBaseUrl,
+            : overrides.authorizationServerUrlTrailingSlash
+              ? `${issuerBaseUrl}/`
+              : issuerBaseUrl,
         ],
         bearer_methods_supported: ["header"],
       });

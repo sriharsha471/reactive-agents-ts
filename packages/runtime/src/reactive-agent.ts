@@ -18,6 +18,7 @@ import {
     Stream as EStream,
     Context,
     Fiber,
+    Layer,
 } from 'effect'
 import { deriveReceiptModelId } from './builder/helpers.js'
 import { deriveTaskOutcome, deriveMetadataToolCalls } from './engine/finalize/derive-outcome.js'
@@ -101,6 +102,13 @@ import {
 import type { AgentDebrief } from './debrief.js'
 import { Health } from '@reactive-agents/health'
 import { emitErrorSwallowed, errorTag } from "@reactive-agents/core";
+import {
+    generateAgentCard,
+    createA2AServer,
+    createA2AHttpServer,
+    A2AHttpServer,
+    A2AError,
+} from '@reactive-agents/a2a'
 import { streamObjectFrom } from './engine/stream-object.js'
 import type { DeepPartial } from './builder/types.js'
 import type { ChannelsConfig } from "@reactive-agents/channels";
@@ -253,7 +261,28 @@ export class ReactiveAgent<TOut = unknown> {
             staticBriefInfo?: {
                 indexedDocuments: Array<{ source: string; chunkCount: number; format: string }>
             }
-        }
+        },
+        /**
+         * @internal Display name set via `.withName()` at build time. Distinct
+         * from `agentId`, which embeds a `${name}-${Date.now()}` timestamp
+         * prefix (see `builder.ts`'s `agentId` derivation) and is therefore
+         * unsuitable as a human-facing name — e.g. for the A2A Agent Card
+         * (`serveA2A()`). `serveA2A(options)`'s own `name` option still wins
+         * over this when the caller wants to present a different name than
+         * the one the agent was built with.
+         */
+        private readonly _name?: string,
+        /**
+         * @internal Default port for `serveA2A()`, from `.withA2A({port})`.
+         * `.withA2A()` builds no layer — see `serveA2A()`'s doc comment.
+         */
+        private readonly _a2aDefaultPort?: number,
+        /**
+         * @internal Default base path for `serveA2A()`, from `.withA2A({basePath})`.
+         * Prefixes all three A2A routes (JSON-RPC, `/agent/card`,
+         * `/.well-known/agent.json`) — see `http-server.ts`'s `normalizeBasePath`.
+         */
+        private readonly _a2aDefaultBasePath?: string
     ) {}
 
     /**
@@ -922,6 +951,128 @@ export class ReactiveAgent<TOut = unknown> {
             // comparisons in consumer code aren't disturbed by a change here.
             throw toRunBoundaryError(unwrapErrorWithSuggestion(e))
         }) as Promise<AgentResult & { object?: TOut }>
+    }
+
+    /**
+     * Serve this agent over the A2A protocol. Returns once the port is bound.
+     *
+     * Other agents discover it at `/.well-known/agent.json` and invoke it with
+     * JSON-RPC `message/send`. Replaces the old `.withA2A()` layer wiring,
+     * which composed at runtime-construction time — before the agent existed —
+     * and so bound no port and reached no executor (dead code, deleted
+     * alongside this method). `.withA2A(options)` itself is kept as a config
+     * carrier: its `port` and `basePath` are the defaults here when the
+     * caller omits them.
+     *
+     * Cancel correlation: A2A's minted `taskId` (`task-handler.ts`) is passed
+     * straight into `run()`'s own `options.taskId`, which `buildRunTaskEffect`
+     * adopts verbatim as the `Task.id` the ExecutionEngine executes under
+     * (`reactive-agent.ts`'s `buildRunTaskEffect`). So the SAME id `agent
+     * .cancel(taskId)` expects is the id A2A already knows — no separate
+     * id-mapping table needed. (`tasks/cancel` still only flips the A2A task's
+     * status today — the executor fiber itself is `forkDaemon`'d with no
+     * retained interrupt handle in non-blocking mode; that gap is out of scope
+     * here, see the A2A repair plan's Task 1 note.)
+     */
+    async serveA2A(options?: {
+        readonly port?: number
+        readonly description?: string
+        readonly hostname?: string
+        readonly token?: string
+        /** Overrides the Agent Card `name`; defaults to the name set via `.withName()`. */
+        readonly name?: string
+        /** Prefixes all A2A routes; defaults to the base path set via `.withA2A({basePath})`. */
+        readonly basePath?: string
+    }): Promise<{ readonly port: number; stop(): Promise<void> }> {
+        const port = options?.port ?? this._a2aDefaultPort ?? 3000
+        const name = options?.name ?? this._name ?? this.agentId
+        const basePath = options?.basePath ?? this._a2aDefaultBasePath
+
+        // Executor seam: (input, taskId) => Effect<string, A2AError>. Threads
+        // A2A's taskId into run() so cancel() correlation holds (see doc
+        // comment above) and surfaces run() failures as A2AError instead of
+        // letting them escape as raw Error/unknown.
+        const executor = (input: string, taskId: string): Effect.Effect<string, A2AError> =>
+            Effect.tryPromise({
+                try: () => this.run(input, { taskId }),
+                catch: (e) =>
+                    new A2AError({
+                        code: 'INTERNAL_ERROR',
+                        message: e instanceof Error ? e.message : String(e),
+                    }),
+            }).pipe(
+                Effect.flatMap((result) => {
+                    // `run()`'s documented contract (see the BARE_BUILDER_THROWS_ON
+                    // comment above): abstention, fabrication-guard rejection, and
+                    // empty-output-no-deliverable all resolve with `success: false`
+                    // WITHOUT throwing — the agent completed and was graded, not a
+                    // runtime failure. If this executor only read `.output`, those
+                    // graceful declines would surface to an A2A caller as
+                    // `state: "completed"`, indistinguishable from a real answer.
+                    // Branch on `success` and fail the Effect so
+                    // `createTaskHandler`'s `Effect.catchAll` (task-handler.ts)
+                    // maps it to `state: "failed"` instead.
+                    if (result.success) return Effect.succeed(result.output)
+
+                    const message =
+                        result.error ??
+                        (result.abstention
+                            ? `Agent declined to complete the task: ${result.abstention.reason}`
+                            : result.output.length > 0
+                              ? result.output
+                              : 'Agent declined to complete the task')
+
+                    // No dedicated "agent declined" code exists in A2AError's
+                    // code family (see errors.ts) and the finding's constraint is
+                    // not to invent one. `INTERNAL_ERROR` is the same generic
+                    // bucket this executor's own `catch` above already uses for
+                    // genuine execution failures, and what `A2AError.parse`
+                    // defaults to — reusing it keeps the code space unchanged;
+                    // `message` carries the distinguishing content.
+                    return Effect.fail(
+                        new A2AError({
+                            code: 'INTERNAL_ERROR',
+                            message,
+                        }),
+                    )
+                }),
+            )
+
+        const agentCard = generateAgentCard({
+            name,
+            description: options?.description,
+            // Actual bound port isn't known until `start()` resolves (esp. with
+            // `port: 0`), so the card's `url` uses the requested port; callers
+            // that need the resolved port read `handle.port`. Includes
+            // `basePath` when set, since that's where the routes actually live.
+            url: `http://${options?.hostname ?? '127.0.0.1'}:${port}${basePath ?? ''}`,
+        })
+
+        // Pass hostname/token as explicit per-call parameters (never a
+        // process.env mutation — that would leak across concurrent/sequential
+        // serveA2A() calls in the same process, see the A2A repair plan's
+        // final-review C1 finding). createA2AHttpServer falls back to
+        // RA_A2A_HOST/RA_A2A_TOKEN itself when neither is given here, which
+        // preserves `rax serve`'s env-driven behavior.
+        const serverLayer = createA2AHttpServer(port, executor, basePath, {
+            hostname: options?.hostname,
+            token: options?.token,
+        }).pipe(Layer.provide(createA2AServer(agentCard)))
+
+        const { boundPort, stop } = await Effect.runPromise(
+            Effect.gen(function* () {
+                const server = yield* A2AHttpServer
+                const boundPort = yield* server.start()
+                return { boundPort, stop: () => Effect.runPromise(server.stop()) }
+            }).pipe(Effect.provide(serverLayer)),
+        )
+
+        return {
+            port: boundPort,
+            stop: async () => {
+                await stop()
+            },
+        }
     }
 
     /**

@@ -13,7 +13,8 @@ describe("AgentCard Generator", () => {
     expect(card.version).toBe("0.1.0");
     expect(card.protocolVersion).toBe("0.3.0");
     expect(card.provider.organization).toBe("Reactive Agents");
-    expect(card.capabilities.streaming).toBe(true);
+    // Default false: real SSE streaming isn't implemented (see agent-card.ts).
+    expect(card.capabilities.streaming).toBe(false);
     expect(card.capabilities.pushNotifications).toBe(false);
     expect(card.skills).toEqual([]);
     expect(card.defaultInputModes).toContain("text/plain");
@@ -68,8 +69,19 @@ describe("AgentCard Generator", () => {
     expect(card.provider.organization).toBe("Reactive Agents");
     expect(card.provider.url).toBeUndefined();
     expect(card.description).toBeUndefined();
-    expect(card.capabilities.streaming).toBe(true);
+    // Default false: real SSE streaming isn't implemented (see agent-card.ts).
+    expect(card.capabilities.streaming).toBe(false);
     expect(card.capabilities.pushNotifications).toBe(false);
+  });
+
+  it("lets a caller opt in to advertising streaming explicitly", () => {
+    const card = generateAgentCard({
+      name: "streaming-agent",
+      url: "http://localhost:5000",
+      capabilities: { streaming: true },
+    });
+
+    expect(card.capabilities.streaming).toBe(true);
   });
 });
 

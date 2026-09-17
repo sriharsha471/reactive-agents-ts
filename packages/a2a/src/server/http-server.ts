@@ -7,11 +7,10 @@ import type {
   SendMessageParams,
   TaskQueryParams,
   TaskCancelParams,
-  A2ATask,
   AgentCard,
 } from "../types.js";
 import { A2AError } from "../errors.js";
-import { Effect, Context, Layer, Ref } from "effect";
+import { Effect, Context, Layer } from "effect";
 import { secureServe } from "@reactive-agents/runtime-shim";
 import type { ServerLike } from "@reactive-agents/runtime-shim";
 import { A2AServer } from "./a2a-server.js";
@@ -22,43 +21,81 @@ export class A2AHttpServer extends Context.Tag("A2AHttpServer")<
   A2AHttpServer,
   {
     readonly handleJsonRpc: (request: JsonRpcRequest) => Effect.Effect<unknown, A2AError>;
-    readonly start: () => Effect.Effect<void>;
+    /** Binds a real port and returns the port actually bound (useful with `port: 0`). */
+    readonly start: () => Effect.Effect<number>;
     readonly stop: () => Effect.Effect<void>;
   }
 >() {}
 
 const JSONRPC_VERSION = "2.0";
 
-type JsonRpcMethod =
-  | "message/send"
-  | "message/stream"
-  | "tasks/get"
-  | "tasks/cancel"
-  | "tasks/sendSubscribe"
-  | "agent/card";
+type JsonRpcId = JsonRpcRequest["id"];
 
-export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor) =>
+/** Strips a trailing slash and ensures a single leading slash; `undefined`/`"/"` normalize to `""` (no prefix). */
+const normalizeBasePath = (basePath?: string): string => {
+  if (!basePath || basePath === "/") return "";
+  const trimmed = basePath.replace(/\/+$/, "");
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+};
+
+export interface A2AHttpServerOptions {
+  /** Bind hostname. Defaults to `RA_A2A_HOST` env, then `secureServe`'s own loopback default. */
+  readonly hostname?: string;
+  /** Bearer token required on every request. Defaults to `RA_A2A_TOKEN` env. */
+  readonly token?: string;
+}
+
+export const createA2AHttpServer = (
+  port: number = 3000,
+  executor?: TaskExecutor,
+  basePath?: string,
+  serverOptions?: A2AHttpServerOptions,
+) =>
   Layer.effect(
     A2AHttpServer,
     Effect.gen(function* () {
       const server = yield* A2AServer;
-      const store = yield* Ref.make<{ tasks: Map<string, A2ATask> }>({ tasks: new Map() });
-      const taskHandler = createTaskHandler(store, executor);
+      const base = normalizeBasePath(basePath);
+      // All three routes live under `base` (default `""`, i.e. root) — the
+      // JSON-RPC endpoint at `base` itself (or `/` when there is no base),
+      // the fallback card at `base/agent/card`, and A2A standard discovery
+      // at `base/.well-known/agent.json`. Clients (`a2a-client.ts`,
+      // `discovery.ts`) already treat these as relative to whatever base URL
+      // they're given, so prefixing all three keeps client and server in
+      // sync without touching the JSON-RPC dispatch logic itself.
+      const rpcPath = base === "" ? "/" : base;
+      const cardPath = `${base}/agent/card`;
+      const wellKnownPath = `${base}/.well-known/agent.json`;
+      // Single task store: the http server writes/reads through the
+      // A2AServer service's own store (via TaskStore's getTask/setTask),
+      // rather than keeping a second independent Ref. This is what makes
+      // tasks/cancel able to find a task that message/send just created.
+      const taskHandler = createTaskHandler(server, executor);
 
       // Mutable reference to the server instance
       let bunServer: ServerLike | null = null;
 
-      const handleMessageSend = (params: unknown) =>
+      const handleMessageSend = (params: unknown, id: JsonRpcId) =>
         Effect.gen(function* () {
           const sendParams = params as SendMessageParams;
           const task = yield* taskHandler.handleMessageSend(sendParams);
-          return { jsonrpc: JSONRPC_VERSION, id: null, result: task };
+          return { jsonrpc: JSONRPC_VERSION, id, result: task };
         });
 
       const handleMessageStream = (params: unknown, agentCard: AgentCard) =>
         Effect.gen(function* () {
           const sendParams = params as SendMessageParams;
-          const task = yield* taskHandler.handleMessageSend(sendParams);
+          // Force blocking mode regardless of what the caller sent: Task 1's
+          // spec-shaped default is non-blocking, but this handler joins the
+          // task's events into a single SSE response after the fact (it does
+          // not actually stream incremental events) — without blocking it
+          // would emit one `working`/`final:false` event and close,
+          // stranding the caller with no result (final-review I1). This
+          // restores the previously-described "await full completion" shape.
+          const task = yield* taskHandler.handleMessageSend({
+            ...sendParams,
+            configuration: { ...sendParams.configuration, blocking: true },
+          });
 
           // Build SSE events for the completed task
           const events: StreamEvent[] = [
@@ -94,28 +131,22 @@ export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor
           return { task, events };
         });
 
-      const handleTasksGet = (params: unknown) =>
+      const handleTasksGet = (params: unknown, id: JsonRpcId) =>
         Effect.gen(function* () {
           const queryParams = params as TaskQueryParams;
-          // Try the local store first, then fall back to the server store
-          const state = yield* Ref.get(store);
-          const localTask = state.tasks.get(queryParams.id);
-          if (localTask) {
-            return { jsonrpc: JSONRPC_VERSION, id: null, result: localTask };
-          }
           const task = yield* server.getTask(queryParams.id);
-          return { jsonrpc: JSONRPC_VERSION, id: null, result: task };
+          return { jsonrpc: JSONRPC_VERSION, id, result: task };
         }).pipe(
           Effect.mapError(
             (e) => new A2AError({ code: "TASK_NOT_FOUND", message: e.taskId }),
           ),
         );
 
-      const handleTasksCancel = (params: unknown) =>
+      const handleTasksCancel = (params: unknown, id: JsonRpcId) =>
         Effect.gen(function* () {
           const cancelParams = params as TaskCancelParams;
           const task = yield* server.cancelTask(cancelParams.id);
-          return { jsonrpc: JSONRPC_VERSION, id: null, result: task };
+          return { jsonrpc: JSONRPC_VERSION, id, result: task };
         }).pipe(
           Effect.mapError((e) => {
             if (e._tag === "TaskNotFoundError") {
@@ -134,10 +165,10 @@ export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor
           }),
         );
 
-      const handleAgentCard = () =>
+      const handleAgentCard = (id: JsonRpcId) =>
         Effect.gen(function* () {
           const card = yield* server.getAgentCard();
-          return { jsonrpc: JSONRPC_VERSION, id: null, result: card };
+          return { jsonrpc: JSONRPC_VERSION, id, result: card };
         });
 
       const routeRequest = (
@@ -145,13 +176,13 @@ export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor
       ): Effect.Effect<unknown, A2AError> => {
         switch (request.method) {
           case "message/send":
-            return handleMessageSend(request.params);
+            return handleMessageSend(request.params, request.id);
           case "tasks/get":
-            return handleTasksGet(request.params);
+            return handleTasksGet(request.params, request.id);
           case "tasks/cancel":
-            return handleTasksCancel(request.params);
+            return handleTasksCancel(request.params, request.id);
           case "agent/card":
-            return handleAgentCard();
+            return handleAgentCard(request.id);
           default:
             return Effect.fail(
               new A2AError({
@@ -169,41 +200,65 @@ export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor
           Effect.gen(function* () {
             const agentCard = yield* server.getAgentCard();
 
-            // Secure-by-default ingress (F4): binds loopback unless RA_A2A_HOST
-            // is set, and refuses a non-loopback bind without RA_A2A_TOKEN.
+            // Secure-by-default ingress (F4): binds loopback unless a hostname
+            // is given, and refuses a non-loopback bind without a token.
+            // Explicit `serverOptions` (per-call, e.g. from `serveA2A()`)
+            // take priority; RA_A2A_HOST/RA_A2A_TOKEN env vars are only the
+            // fallback default (used by `rax serve`), never a global mutation
+            // — each call to this factory is isolated from every other.
             bunServer = yield* Effect.promise(() => secureServe({
               port,
-              hostname: process.env.RA_A2A_HOST,
-              token: process.env.RA_A2A_TOKEN,
+              hostname: serverOptions?.hostname ?? process.env.RA_A2A_HOST,
+              token: serverOptions?.token ?? process.env.RA_A2A_TOKEN,
               fetch: async (req) => {
                 const url = new URL(req.url);
 
-                // GET /.well-known/agent.json — A2A standard discovery
-                if (req.method === "GET" && url.pathname === "/.well-known/agent.json") {
+                // GET {base}/.well-known/agent.json — A2A standard discovery
+                if (req.method === "GET" && url.pathname === wellKnownPath) {
                   return new Response(JSON.stringify(agentCard), {
                     headers: { "Content-Type": "application/json" },
                   });
                 }
 
-                // GET /agent/card — fallback discovery
-                if (req.method === "GET" && url.pathname === "/agent/card") {
+                // GET {base}/agent/card — fallback discovery
+                if (req.method === "GET" && url.pathname === cardPath) {
                   return new Response(JSON.stringify(agentCard), {
                     headers: { "Content-Type": "application/json" },
                   });
                 }
 
-                // POST / — JSON-RPC endpoint
-                if (req.method === "POST") {
+                // POST {base} (default "/") — JSON-RPC endpoint
+                if (req.method === "POST" && url.pathname === rpcPath) {
                   try {
                     const body = (await req.json()) as JsonRpcRequest;
 
-                    // Handle message/stream — return SSE
+                    // Handle message/stream — return SSE, or a JSON-RPC error
+                    // if the task never started (e.g. no executor configured)
+                    // — nothing has been written yet, so a plain JSON error
+                    // response is correct here, not a malformed SSE body.
                     if (body.method === "message/stream") {
-                      const streamResult = await Effect.runPromise(
-                        handleMessageStream(body.params, agentCard),
+                      const streamOutcome = await Effect.runPromise(
+                        handleMessageStream(body.params, agentCard).pipe(Effect.either),
                       );
-                      const sseBody = streamResult.events
-                        .map((evt) => formatSSEEvent(evt))
+
+                      if (streamOutcome._tag === "Left") {
+                        const error = streamOutcome.left;
+                        return new Response(
+                          JSON.stringify({
+                            jsonrpc: JSONRPC_VERSION,
+                            id: body.id,
+                            error: {
+                              code: -32000,
+                              message: error.message,
+                              data: { a2aCode: error.code },
+                            },
+                          }),
+                          { headers: { "Content-Type": "application/json" } },
+                        );
+                      }
+
+                      const sseBody = streamOutcome.right.events
+                        .map((evt) => formatSSEEvent(evt, body.id))
                         .join("");
 
                       return new Response(sseBody, {
@@ -253,6 +308,8 @@ export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor
                 return new Response("Not Found", { status: 404 });
               },
             }));
+
+            return bunServer.port;
           }),
 
         stop: () =>

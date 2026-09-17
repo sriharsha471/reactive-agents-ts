@@ -12,12 +12,42 @@
 
 import { Effect } from "effect";
 import { assertPublicUrl } from "@reactive-agents/runtime-shim";
-import { agentEgressGuard, type AgentEgressConfig } from "@reactive-agents/a2a";
+import { agentEgressGuard, type A2ATask, type AgentEgressConfig } from "@reactive-agents/a2a";
 import type {
   RemoteAgentClient,
   TaskResult,
   ToolDefinition,
 } from "@reactive-agents/tools";
+
+/**
+ * A2A tasks reach a terminal state asynchronously (Task 1's non-blocking
+ * default forks the executor and returns a `working` task immediately).
+ * These are the states after which the task will never again change.
+ */
+const TERMINAL_TASK_STATES: ReadonlySet<string> = new Set([
+  "completed",
+  "failed",
+  "canceled",
+  "rejected",
+  "input_required",
+  "unknown",
+]);
+
+/**
+ * Extracts the agent's textual output from a spec-shaped `A2ATask`.
+ *
+ * Per `A2ATaskSchema`, output lives in `artifacts[].parts[].text` — never a
+ * flat `task.result` field. `artifacts` (and each artifact's `parts`) can be
+ * absent or empty, e.g. while the task is still `working`, so this returns
+ * `undefined` rather than throwing in that case.
+ */
+const extractArtifactText = (task: Pick<A2ATask, "artifacts">): string | undefined => {
+  const texts = (task.artifacts ?? [])
+    .flatMap((artifact) => artifact.parts ?? [])
+    .filter((part): part is { kind: "text"; text: string } => part.kind === "text")
+    .map((part) => part.text);
+  return texts.length > 0 ? texts.join("\n") : undefined;
+};
 
 /**
  * Egress guard for A2A peer URLs (F15). These are operator-configured, and
@@ -52,6 +82,14 @@ export interface RemoteAgentToolDeps {
     agentCardUrl: string,
   ) => Promise<TaskResult>;
   readonly egress?: AgentEgressConfig;
+  /**
+   * Total budget (ms) `getTask` polls for a terminal task state before
+   * failing loudly. Defaults to 120_000 (2 min) — the same convention
+   * `spawn-agent`'s `timeoutMs` uses for a single remote-agent-shaped call
+   * (`packages/tools/src/adapters/agent-tool-adapter.ts`). Test-only override;
+   * production callers should not need to set this.
+   */
+  readonly pollBudgetMs?: number;
 }
 
 export const createRemoteAgentToolRegistration = (
@@ -94,17 +132,26 @@ export const createRemoteAgentToolRegistration = (
                     },
                   ],
                 },
+                // Ask the remote server to await full completion (Task 1's
+                // spec-shaped default is non-blocking) so the fast path
+                // returns a terminal task directly instead of depending on
+                // getTask's poll loop below. See the A2A repair plan's
+                // final-review C2 finding.
+                configuration: { blocking: true },
               },
               id: crypto.randomUUID(),
             }),
           })
             .then((r) => r.json())
-            .then(
-              (d: Record<string, unknown>) =>
-                d.result as {
-                  taskId: string;
-                },
-            );
+            .then((d: Record<string, unknown>) => {
+              const task = d.result as A2ATask | undefined;
+              if (!task?.id) {
+                throw new Error(
+                  `A2A message/send response missing task id: ${JSON.stringify(d)}`,
+                );
+              }
+              return { taskId: task.id };
+            });
         },
         catch: (e) => new Error(String(e)),
       }),
@@ -112,26 +159,59 @@ export const createRemoteAgentToolRegistration = (
       Effect.tryPromise({
         try: async () => {
           await assertPublicUrl(remoteUrl, guard);
-          return fetch(remoteUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              jsonrpc: "2.0",
-              method: "tasks/get",
-              params: { id: params.id },
-              id: crypto.randomUUID(),
-            }),
-          })
-            .then((r) => r.json())
-            .then(
-              (d: Record<string, unknown>) =>
-                d.result as {
-                  status: string;
-                  result: unknown;
-                },
+
+          const fetchTask = async (): Promise<A2ATask> => {
+            const response = await fetch(remoteUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                jsonrpc: "2.0",
+                method: "tasks/get",
+                params: { id: params.id },
+                id: crypto.randomUUID(),
+              }),
+            });
+            const data = (await response.json()) as Record<string, unknown>;
+            const task = data.result as A2ATask | undefined;
+            if (!task?.status) {
+              throw new Error(`A2A tasks/get response missing task status: ${JSON.stringify(data)}`);
+            }
+            return task;
+          };
+
+          // Poll until the task reaches a terminal state. `sendMessage` now
+          // asks for `configuration.blocking: true`, so a compliant server
+          // already returns a terminal task before this loop runs at all —
+          // this poll is the fallback path (server ignored blocking, or a
+          // task queried independently of this client's own sendMessage).
+          // Budget is deliberately generous (2 min default, matching
+          // spawn-agent's `timeoutMs` convention in agent-tool-adapter.ts)
+          // because a real multi-step remote agent run can legitimately take
+          // that long — exhausting it must FAIL loudly rather than silently
+          // hand back a `working` status with no result (final-review C2).
+          const pollIntervalMs = 200;
+          const pollBudgetMs = deps.pollBudgetMs ?? 120_000;
+          const maxAttempts = Math.max(1, Math.ceil(pollBudgetMs / pollIntervalMs));
+          let lastTask: A2ATask = await fetchTask();
+          for (
+            let attempt = 1;
+            attempt < maxAttempts && !TERMINAL_TASK_STATES.has(lastTask.status.state);
+            attempt++
+          ) {
+            await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+            lastTask = await fetchTask();
+          }
+
+          if (!TERMINAL_TASK_STATES.has(lastTask.status.state)) {
+            throw new Error(
+              `A2A task ${params.id} did not reach a terminal state within ${pollBudgetMs}ms ` +
+                `(last observed status: "${lastTask.status.state}")`,
             );
+          }
+
+          return { status: lastTask.status.state, result: extractArtifactText(lastTask) };
         },
         catch: (e) => new Error(String(e)),
       }),

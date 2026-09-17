@@ -41,7 +41,6 @@ import type {
   GuardrailsOptions,
   VerificationOptions,
   ObservabilityOptions,
-  A2AOptions,
   GatewayOptions,
   ModelRoutingOptions,
 } from "../types.js";
@@ -153,7 +152,6 @@ export interface BuilderRuntimeStateView {
   readonly _environmentContext?: Record<string, string>;
   readonly _mcpServers: MCPServerConfig[];
   readonly _reasoningOptions?: ReasoningOptions;
-  readonly _a2aOptions?: A2AOptions;
   readonly _gatewayOptions?: GatewayOptions;
   readonly _contextProfile?: Partial<ContextProfile>;
   readonly _resultCompression?: ResultCompressionConfig;
@@ -468,9 +466,6 @@ export const buildBaseRuntimeAndEngine = (
       mcpServers:
         state._mcpServers.length > 0 ? state._mcpServers : undefined,
       reasoningOptions: state._reasoningOptions,
-      enableA2A: !!state._a2aOptions,
-      a2aPort: state._a2aOptions?.port,
-      a2aBasePath: state._a2aOptions?.basePath,
       enableGateway: !!state._gatewayOptions,
       gatewayOptions: state._gatewayOptions,
       contextProfile: state._contextProfile,

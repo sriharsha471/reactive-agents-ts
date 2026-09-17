@@ -5,7 +5,7 @@ import { Effect, Context, Layer, Ref } from "effect";
 export class A2AClient extends Context.Tag("A2AClient")<
   A2AClient,
   {
-    readonly sendMessage: (params: SendMessageParams) => Effect.Effect<{ taskId: string }, A2AError | TransportError>;
+    readonly sendMessage: (params: SendMessageParams) => Effect.Effect<A2ATask, A2AError | TransportError>;
     readonly getTask: (params: TaskQueryParams) => Effect.Effect<A2ATask, A2AError | TransportError>;
     readonly cancelTask: (params: TaskCancelParams) => Effect.Effect<A2ATask, A2AError | TransportError>;
     readonly getAgentCard: (url: string) => Effect.Effect<AgentCard, DiscoveryError | TransportError>;
@@ -59,7 +59,7 @@ export const createA2AClient = (config: ClientConfig) =>
 
       return {
         sendMessage: (params) =>
-          makeRequest<{ taskId: string }>("message/send", params).pipe(
+          makeRequest<A2ATask>("message/send", params).pipe(
             Effect.mapError((e) => e as A2AError | TransportError),
           ),
 

@@ -487,29 +487,6 @@ export interface RuntimeOptions {
    */
   observabilityOptions?: ObservabilityOptions;
 
-  // ─── A2A Configuration ───
-
-  /**
-   * Enable Agent-to-Agent (A2A) protocol server.
-   *
-   * Default: `false`
-   */
-  enableA2A?: boolean;
-
-  /**
-   * HTTP port for the A2A server.
-   *
-   * Default: `3000`
-   */
-  a2aPort?: number;
-
-  /**
-   * Base path for A2A endpoints (e.g., `/api/agents` → `http://localhost:3000/api/agents/rpc`).
-   *
-   * Default: `/` (root)
-   */
-  a2aBasePath?: string;
-
   // ─── Gateway Configuration ───
 
   /**

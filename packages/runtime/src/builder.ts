@@ -2600,7 +2600,6 @@ export class ReactiveAgentBuilder<TOut = unknown> {
             const mcpServers = [...self._mcpServers]
             const toolsOptions = self._toolsOptions
             const promptsOptions = self._promptsOptions
-            const a2aOptions = self._a2aOptions
             const gatewayOptions = self._gatewayOptions
             const agentTools = self._agentTools
             const allowDynamicSubAgents = self._allowDynamicSubAgents
@@ -2722,6 +2721,9 @@ export class ReactiveAgentBuilder<TOut = unknown> {
                 engine,
                 fullRuntime,
                 agentId,
+                name: self._name,
+                a2aDefaultPort: self._a2aOptions?.port,
+                a2aDefaultBasePath: self._a2aOptions?.basePath,
                 mcpServerNames: mcpServers.map((s) => s.name),
                 gatewayOptions,
                 streamDensity,
@@ -2806,7 +2808,6 @@ export class ReactiveAgentBuilder<TOut = unknown> {
     private static readonly _assertRuntimeStateViewShape = (
         self: ReactiveAgentBuilder<any>
     ): BuilderRuntimeStateView => ({
-        _a2aOptions: self._a2aOptions,
         _adaptiveHarness: self._adaptiveHarness,
         _approvalPolicy: self._approvalPolicy,
         _behavioralContract: self._behavioralContract,

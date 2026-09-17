@@ -44,7 +44,6 @@
         "@reactive-agents/llm-provider": "workspace:*",
         "@reactive-agents/memory": "workspace:*",
         "@reactive-agents/runtime": "workspace:*",
-        "@reactive-agents/runtime-shim": "workspace:*",
         "@reactive-agents/tools": "workspace:*",
         "@reactive-agents/trace": "workspace:*",
         "boxen": "^8.0.1",
@@ -195,7 +194,7 @@
     },
     "packages/benchmarks": {
       "name": "@reactive-agents/benchmarks",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "dependencies": {
         "@reactive-agents/core": "workspace:*",
         "@reactive-agents/cost": "workspace:*",
@@ -304,8 +303,8 @@
         "rax-diagnose": "./dist/cli.js",
       },
       "dependencies": {
-        "@reactive-agents/replay": "workspace:*",
-        "@reactive-agents/trace": "workspace:*",
+        "@reactive-agents/replay": "0.16.0",
+        "@reactive-agents/trace": "0.16.0",
       },
       "devDependencies": {
         "bun-types": "latest",
@@ -411,7 +410,7 @@
     },
     "packages/judge-server": {
       "name": "@reactive-agents/judge-server",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "dependencies": {
         "@reactive-agents/core": "workspace:*",
         "@reactive-agents/eval": "workspace:*",
@@ -624,10 +623,10 @@
       "name": "@reactive-agents/replay",
       "version": "0.16.0",
       "dependencies": {
-        "@reactive-agents/core": "workspace:*",
-        "@reactive-agents/llm-provider": "workspace:*",
-        "@reactive-agents/tools": "workspace:*",
-        "@reactive-agents/trace": "workspace:*",
+        "@reactive-agents/core": "0.16.0",
+        "@reactive-agents/llm-provider": "0.16.0",
+        "@reactive-agents/tools": "0.16.0",
+        "@reactive-agents/trace": "0.16.0",
         "effect": "^3.10.0",
       },
       "devDependencies": {
@@ -4341,11 +4340,11 @@
 
     "@reactive-agents/advocate/bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
 
-    "@reactive-agents/benchmarks/bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
+    "@reactive-agents/benchmarks/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
     "@reactive-agents/channels/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
-    "@reactive-agents/cli/bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
+    "@reactive-agents/cli/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
     "@reactive-agents/compose/bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
 
@@ -4355,7 +4354,7 @@
 
     "@reactive-agents/cost/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
-    "@reactive-agents/diagnose/bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
+    "@reactive-agents/diagnose/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
     "@reactive-agents/eval/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
@@ -4389,7 +4388,7 @@
 
     "@reactive-agents/reasoning/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
-    "@reactive-agents/replay/bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
+    "@reactive-agents/replay/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
     "@reactive-agents/runtime/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 

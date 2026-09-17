@@ -105,7 +105,7 @@ export const WITHER_PROOF: Readonly<Record<string, Proof>> = {
   //     level as of this task; grouped into follow-on batches of ~6, priority
   //     order = safety/cost-adjacent, then observability/session, then
   //     cosmetic/rarely-used surface) ───────────────────────────────────────
-  withA2A: { status: "UNOBSERVABLE-DETERMINISTIC", reason: "SILENT — batch 2 (plan 2026-09-14 Task 8); starts a real JSON-RPC HTTP server (createRuntime enableA2A/a2aPort), zero test call sites found across the repo" },
+  withA2A: { status: "UNOBSERVABLE-DETERMINISTIC", reason: "SILENT — batch 2 (plan 2026-09-14 Task 8); now only a config carrier (default port) consumed by `agent.serveA2A()` (A2A repair Task 2, 2026-09-16) which itself starts a real JSON-RPC HTTP server — proven by a2a-wiring.test.ts, but that test drives `.serveA2A()` directly, not `.withA2A()`'s own port-default plumbing" },
   withAgentTool: { status: "UNOBSERVABLE-DETERMINISTIC", reason: "SILENT — batch 2 (plan 2026-09-14 Task 8); subagent-persona.test.ts only asserts the agent builds, never that the registered remote/static tool is actually invoked with the configured persona" },
   withAudit: { status: "UNOBSERVABLE-DETERMINISTIC", reason: "SILENT — batch 3 (plan 2026-09-14 Task 8); every call site is a kitchen-sink build/e2e test asserting overall success, none isolates an audit-log-specific observable effect" },
   withCalibration: { status: "UNOBSERVABLE-DETERMINISTIC", reason: "SILENT — batch 3 (plan 2026-09-14 Task 8); resolveCalibrationSetting is unit-tested directly (calibration-skip-honored.test.ts) but no test calls the builder's .withCalibration( wither itself and observes a behavioral difference" },

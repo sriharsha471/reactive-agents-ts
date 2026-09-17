@@ -92,7 +92,7 @@ export function main(argv: string[] = process.argv.slice(2)) {
       break;
 
     case "serve":
-      runServe(argv.slice(1));
+      runAsync(runServe(argv.slice(1)));
       break;
 
     case "discover":

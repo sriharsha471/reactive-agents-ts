@@ -172,18 +172,37 @@ export interface MCPLoginArgs {
   readonly target: MCPTarget;
   readonly mcpConfigPath?: string;
   readonly clientId?: string;
+  /**
+   * Confidential-client secret, for authorization servers that issue one
+   * alongside the client ID (e.g. Google's "Web application" OAuth client
+   * type) rather than a public/native client. Optional — most MCP servers
+   * following the spec's default posture use a public client with no secret.
+   */
+  readonly clientSecret?: string;
   readonly scope?: string;
   readonly noBrowser: boolean;
   readonly timeoutMs?: number;
+  /**
+   * Pin the loopback redirect listener to a fixed port instead of an
+   * ephemeral one. Required when the authorization server validates the
+   * `redirect_uri` against a pre-registered exact value (most "Web
+   * application"-style OAuth clients) rather than accepting any loopback
+   * port per RFC 8252 — register `http://127.0.0.1:<this port>/callback`
+   * as that server's authorized redirect URI.
+   */
+  readonly redirectPort?: number;
 }
 
-const LOGIN_USAGE = "Usage: rax mcp login <name|--url <endpoint>> [--client-id <id>] [--scope <scope>] [--no-browser]";
+const LOGIN_USAGE =
+  "Usage: rax mcp login <name|--url <endpoint>> [--client-id <id>] [--client-secret <secret>] [--scope <scope>] [--redirect-port <port>] [--no-browser]";
 
 export function parseLoginArgs(argv: readonly string[]): MCPLoginArgs {
   let clientId: string | undefined;
+  let clientSecret: string | undefined;
   let scope: string | undefined;
   let noBrowser = false;
   let timeoutMs: number | undefined;
+  let redirectPort: number | undefined;
 
   const { target, mcpConfigPath } = parseTargetAndFlag(
     argv,
@@ -192,6 +211,12 @@ export function parseLoginArgs(argv: readonly string[]): MCPLoginArgs {
         const v = next();
         if (v === undefined) throw new Error(`${LOGIN_USAGE}: --client-id requires a value`);
         clientId = v;
+        return true;
+      }
+      if (arg === "--client-secret") {
+        const v = next();
+        if (v === undefined) throw new Error(`${LOGIN_USAGE}: --client-secret requires a value`);
+        clientSecret = v;
         return true;
       }
       if (arg === "--scope") {
@@ -214,12 +239,22 @@ export function parseLoginArgs(argv: readonly string[]): MCPLoginArgs {
         timeoutMs = parsed;
         return true;
       }
+      if (arg === "--redirect-port") {
+        const v = next();
+        if (v === undefined) throw new Error(`${LOGIN_USAGE}: --redirect-port requires a value`);
+        const parsed = Number(v);
+        if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) {
+          throw new Error(`${LOGIN_USAGE}: --redirect-port must be an integer between 1 and 65535`);
+        }
+        redirectPort = parsed;
+        return true;
+      }
       return false;
     },
     LOGIN_USAGE,
   );
 
-  return { target, mcpConfigPath, clientId, scope, noBrowser, timeoutMs };
+  return { target, mcpConfigPath, clientId, clientSecret, scope, noBrowser, timeoutMs, redirectPort };
 }
 
 export interface MCPLogoutArgs {
@@ -294,9 +329,11 @@ export async function runLogin(args: MCPLoginArgs, deps: MCPCliDeps = {}): Promi
     auth: {
       type: "authorization_code",
       clientId: args.clientId,
+      clientSecret: args.clientSecret,
       scope: args.scope,
       interactive: true,
       timeoutMs: args.timeoutMs,
+      redirectPort: args.redirectPort,
       onAuthorizationUrl:
         deps.onAuthorizationUrl ?? ((url: URL) => defaultOnAuthorizationUrl(url, args.noBrowser)),
     },
@@ -471,11 +508,15 @@ const HELP = `
     status                                    List stored credentials (never prints tokens)
 
   login options:
-    --client-id <id>      Statically registered client ID (default: dynamic client registration)
-    --scope <scope>       OAuth scope to request
-    --no-browser          Don't launch a browser — still prints the authorization URL and waits
-    --timeout <ms>        Authorization callback timeout in milliseconds (default: 300000)
-    --mcp-config <path>   Path to MCP server config JSON (default: .rax/mcp.json)
+    --client-id <id>       Statically registered client ID (default: dynamic client registration)
+    --client-secret <s>    Client secret, for confidential-client authorization servers
+    --scope <scope>        OAuth scope to request
+    --redirect-port <port> Fixed loopback callback port (default: ephemeral) — required by
+                            authorization servers that validate an exact pre-registered
+                            redirect_uri; register http://127.0.0.1:<port>/callback there
+    --no-browser           Don't launch a browser — still prints the authorization URL and waits
+    --timeout <ms>         Authorization callback timeout in milliseconds (default: 300000)
+    --mcp-config <path>    Path to MCP server config JSON (default: .rax/mcp.json)
 
   logout options:
     --mcp-config <path>   Path to MCP server config JSON (default: .rax/mcp.json)

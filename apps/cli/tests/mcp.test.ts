@@ -129,6 +129,30 @@ describe("mcp login argument parsing", () => {
     expect(args.mcpConfigPath).toBe("/tmp/custom.json");
   });
 
+  it("parses --client-secret and --redirect-port", () => {
+    const args = parseLoginArgs([
+      "docs-server",
+      "--client-secret",
+      "shh-its-a-secret",
+      "--redirect-port",
+      "51789",
+    ]);
+    expect(args.clientSecret).toBe("shh-its-a-secret");
+    expect(args.redirectPort).toBe(51789);
+  });
+
+  it("rejects a non-integer --redirect-port", () => {
+    expect(() => parseLoginArgs(["docs-server", "--redirect-port", "not-a-port"])).toThrow(
+      /integer between 1 and 65535/,
+    );
+  });
+
+  it("rejects an out-of-range --redirect-port", () => {
+    expect(() => parseLoginArgs(["docs-server", "--redirect-port", "70000"])).toThrow(
+      /integer between 1 and 65535/,
+    );
+  });
+
   it("rejects both <name> and --url", () => {
     expect(() => parseLoginArgs(["docs-server", "--url", "https://x.test/mcp"])).toThrow(
       /either <name> or --url/,

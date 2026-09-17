@@ -70,8 +70,18 @@ import { checkToolCall, defaultGuards } from "./guard.js";
 import { META_TOOLS, INTROSPECTION_META_TOOLS } from "../../../kernel/state/kernel-constants.js";
 import { emitErrorSwallowed, errorTag, type KernelMessageLike } from "@reactive-agents/core";
 
-/** Tool names that operate on the filesystem — HealingPipeline will resolve relative paths. */
-const FILE_TOOL_NAMES = new Set(["file-read", "file-write", "code-execute", "shell-execute"]);
+/**
+ * Tool names that operate on the filesystem — HealingPipeline will resolve relative paths.
+ * Exported so `strategies/plan-execute/step-executor.ts` can share this single definition
+ * instead of maintaining a byte-identical copy.
+ */
+export const FILE_TOOL_NAMES = new Set([
+  "file-read",
+  "file-write",
+  "file-edit",
+  "code-execute",
+  "shell-execute",
+]);
 
 /** Extract the text content of the last assistant message from the conversation history. */
 function getLastAssistantText(messages: readonly KernelMessage[]): string {

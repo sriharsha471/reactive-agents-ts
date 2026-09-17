@@ -171,7 +171,7 @@ export function getRecoveryHint(
   // max_iterations, output "Tool call used unavailable name(s)", and wrote
   // nothing. The old vague hint at least did not send it anywhere.
   if (msg.includes("enoent") || msg.includes("not found") || msg.includes("no such file")) {
-    if (toolName === "file-read" || toolName === "file-write") {
+    if (toolName === "file-read" || toolName === "file-write" || toolName === "file-edit") {
       // Absent `exposedTools` ⇒ we cannot prove the tool is callable ⇒ do not
       // name it. Silence beats sending the model after a tool it does not have.
       return exposedTools?.has(LIST_DIRECTORY_TOOL) === true
@@ -357,6 +357,13 @@ function normalizeObservation(toolName: string, result: string): string {
       const rawPath = String(parsed.path ?? "file");
       const path = rawPath.includes("/") ? `./${rawPath.split("/").pop()}` : rawPath;
       return `✓ Written to ${path}`;
+    }
+
+    if (toolName === "file-edit" && parsed.edited === true) {
+      const rawPath = String(parsed.path ?? "file");
+      const path = rawPath.includes("/") ? `./${rawPath.split("/").pop()}` : rawPath;
+      const replacements = typeof parsed.replacements === "number" ? parsed.replacements : 1;
+      return `✓ Edited ${path} (${replacements} replacement${replacements === 1 ? "" : "s"})`;
     }
 
     if (toolName === "code-execute" && parsed.executed === false) {

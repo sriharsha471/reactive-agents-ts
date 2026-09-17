@@ -33,6 +33,7 @@ describe("builtinTools registration", () => {
     expect(names).toContain("http-get");
     expect(names).toContain("file-read");
     expect(names).toContain("file-write");
+    expect(names).toContain("file-edit");
     expect(names).toContain("code-execute");
     expect(names).toContain("grep");
   });

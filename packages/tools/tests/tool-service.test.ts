@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 
 import { EventBusLive } from "@reactive-agents/core";
 import { ToolService, ToolServiceLive } from "../src/tool-service.js";
+import { builtinTools } from "../src/skills/builtin.js";
 
 const TestToolLayer = ToolServiceLive.pipe(Layer.provide(EventBusLive));
 
@@ -250,9 +251,8 @@ describe("ToolService", () => {
       );
 
       const all = yield* tools.listTools();
-      // 11 capability built-ins (web-search, crypto-price, http-get, file-read,
-      // list-directory, file-write, grep, code-execute, git-cli, gh-cli, gws-cli) + 2 registered = 13
-      expect(all).toHaveLength(13);
+      // Every capability builtin, plus the 2 registered by this test.
+      expect(all).toHaveLength(builtinTools.length + 2);
 
       const searchOnly = yield* tools.listTools({ category: "search" });
       // built-in web-search + tool-a
@@ -260,8 +260,11 @@ describe("ToolService", () => {
       expect(searchOnly.map((t) => t.name)).toContain("tool-a");
 
       const highRisk = yield* tools.listTools({ riskLevel: "high" });
-      // built-in file-write + tool-b
-      expect(highRisk).toHaveLength(2);
+      // built-in high-risk tools + tool-b registered by this test
+      const builtinHighRiskCount = builtinTools.filter(
+        (t) => t.definition.riskLevel === "high",
+      ).length;
+      expect(highRisk).toHaveLength(builtinHighRiskCount + 1);
       expect(highRisk.map((t) => t.name)).toContain("tool-b");
 
       const functions = yield* tools.listTools({ source: "function" });

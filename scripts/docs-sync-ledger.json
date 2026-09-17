@@ -8,22 +8,34 @@
         "packages/reasoning/src/kernel/capabilities/act/act.ts",
         "packages/tools/src/skills/activate-skill.ts"
       ],
-      "docPaths": ["CAPABILITIES.md"],
-      "lastSha": "4075fc2e10ed1466ca95f202e707843fe609ffb4"
+      "docPaths": [
+        "CAPABILITIES.md"
+      ],
+      "lastSha": "b785302953ae210cb67f77a009bcd13ca526c007"
     },
     {
       "id": "changelog-whats-new",
       "description": "A new dated CHANGELOG.md version header needs a matching section in the Starlight What's New page. Only fires on an actual `## [X.Y.Z]` header, not on routine commits landing under `## [Unreleased]`.",
-      "codePaths": ["CHANGELOG.md"],
-      "docPaths": ["apps/docs/src/content/docs/guides/whats-new.mdx"],
+      "codePaths": [
+        "CHANGELOG.md"
+      ],
+      "docPaths": [
+        "apps/docs/src/content/docs/guides/whats-new.mdx"
+      ],
       "versionHeaderTrigger": "CHANGELOG.md",
       "lastSha": "4075fc2e10ed1466ca95f202e707843fe609ffb4"
     },
     {
       "id": "builder-api-docs",
       "description": "Builder surface changes need README.md and the Starlight builder-api reference kept truthful.",
-      "codePaths": ["packages/runtime/src/builder.ts", "packages/runtime/src/types.ts"],
-      "docPaths": ["README.md", "apps/docs/src/content/docs/reference/builder-api.md"],
+      "codePaths": [
+        "packages/runtime/src/builder.ts",
+        "packages/runtime/src/types.ts"
+      ],
+      "docPaths": [
+        "README.md",
+        "apps/docs/src/content/docs/reference/builder-api.md"
+      ],
       "lastSha": "4075fc2e10ed1466ca95f202e707843fe609ffb4"
     }
   ]

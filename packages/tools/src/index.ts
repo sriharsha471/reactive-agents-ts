@@ -111,6 +111,8 @@ export {
   fileReadHandler,
   fileWriteTool,
   fileWriteHandler,
+  fileEditTool,
+  fileEditHandler,
   listDirectoryTool,
   listDirectoryHandler,
   withFileRoot,

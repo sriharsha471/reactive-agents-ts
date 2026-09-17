@@ -149,6 +149,7 @@ These tools are registered internally as soon as you call `.withTools()`, but ea
 | `http-get` | http | Make HTTP GET requests | — |
 | `file-read` | file | Read file contents (path-traversal protected) | — |
 | `file-write` | file | Write file contents (requires approval) | — |
+| `file-edit` | file | Replace text in existing files (use instead of `file-write` for edits; requires approval) | — |
 | `code-execute` | code | Execute code in a subprocess (`Bun.spawn`, `cwd: "/tmp"`, minimal env) | — |
 | `crypto-price` | data | Get current prices for 30+ cryptocurrencies via CoinGecko's free public API | — |
 | `git-cli` | vcs | Run any `git` subcommand (e.g. `status`, `log`, `diff`) | `git` in `$PATH` |

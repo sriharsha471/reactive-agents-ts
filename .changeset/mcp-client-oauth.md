@@ -38,3 +38,19 @@ Reactive Agents can now connect as an OAuth 2.1 client to remote MCP servers ove
 Not included (tracked as follow-ups): OS keychain-backed token storage, RFC 8693
 token exchange for sub-agent delegation, and tool-description pinning/re-consent on
 server-side mutation.
+
+Fixes found live-testing against a real third-party OAuth-protected MCP server
+(Google Home MCP, Early Access):
+- The interactive login retry now also covers a 401 raised by a request AFTER the
+  initial connect (e.g. a server, like Google's, that accepts an unauthenticated
+  `initialize` but challenges the very next request) — previously only a 401 on the
+  first connect attempt triggered the browser-login flow.
+- The authorization-server issuer-match check no longer false-positives on a
+  trailing-slash-only difference between the issuer an authorization server
+  publishes and the URL it was discovered from (Google's real issuer omits the
+  trailing slash; a naive string comparison refused every server shaped that way).
+- MCP tools whose JSON Schema uses the `"integer"` type (distinct from `"number"`)
+  now register correctly instead of failing with a schema-validation error.
+- `rax mcp login` gained `--client-secret` and `--redirect-port`, for authorization
+  servers that issue a confidential-client secret and/or validate `redirect_uri` by
+  exact match rather than accepting any loopback port.

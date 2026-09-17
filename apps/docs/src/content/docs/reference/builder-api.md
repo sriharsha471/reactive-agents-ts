@@ -654,14 +654,17 @@ CLI commands for the `authorization_code` grant's one-time interactive login, ru
 connects:
 
 ```bash
-rax mcp login <name|--url <endpoint>> [--client-id <id>] [--scope <scope>] [--no-browser] [--timeout <ms>] [--mcp-config <path>]
+rax mcp login <name|--url <endpoint>> [--client-id <id>] [--client-secret <secret>] [--scope <scope>] [--redirect-port <port>] [--no-browser] [--timeout <ms>] [--mcp-config <path>]
 rax mcp logout <name|--url <endpoint>> [--mcp-config <path>]
 rax mcp status
 ```
 
 `<name>` resolves against `.rax/mcp.json` (or `--mcp-config <path>`); `--url <endpoint>` logs in ad-hoc
-with no config file. `status` lists stored credentials (resource, scope, expiry, whether a refresh token
-is present) and never prints a token.
+with no config file. `--client-secret` is for a confidential OAuth client (a server that issues a secret
+alongside the client ID). `--redirect-port` pins the loopback callback to a fixed port — needed for a
+server that validates `redirect_uri` by exact pre-registered match rather than any loopback port.
+`status` lists stored credentials (resource, scope, expiry, whether a refresh token is present) and
+never prints a token.
 
 ### Lifecycle
 

@@ -653,7 +653,7 @@ const agent = await ReactiveAgents.create()
 Run once, ahead of time, for any server using `authorization_code`:
 
 ```bash
-rax mcp login <name|--url <endpoint>> [--client-id <id>] [--scope <scope>] [--no-browser] [--timeout <ms>] [--mcp-config <path>]
+rax mcp login <name|--url <endpoint>> [--client-id <id>] [--client-secret <secret>] [--scope <scope>] [--redirect-port <port>] [--no-browser] [--timeout <ms>] [--mcp-config <path>]
 rax mcp logout <name|--url <endpoint>> [--mcp-config <path>]
 rax mcp status
 ```
@@ -662,7 +662,12 @@ rax mcp status
   against `.rax/mcp.json` (or `--mcp-config <path>`); use `--url <endpoint>` for an ad-hoc server with no
   config file. `--no-browser` still prints the authorization URL (for headless/SSH sessions) but doesn't
   try to launch one. `--client-id` skips dynamic client registration when the server needs a statically
-  registered client.
+  registered client. `--client-secret` is for a confidential OAuth client — some authorization servers
+  (e.g. Google's "Web application" client type) issue a secret alongside the client ID rather than a
+  public/native client. `--redirect-port` pins the loopback callback to a fixed port instead of an
+  ephemeral one; required by any authorization server that validates `redirect_uri` by exact
+  pre-registered match rather than accepting any loopback port — register
+  `http://127.0.0.1:<port>/callback` as that server's authorized redirect URI.
 - `logout` — deletes the stored credentials for a server, attempting revocation first (best-effort; local
   deletion always happens even if the revocation endpoint is unreachable).
 - `status` — lists every stored credential (resource, scope, expiry, whether a refresh token is present).

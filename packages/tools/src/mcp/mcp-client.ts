@@ -30,6 +30,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { UnauthorizedError, type OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { MCPServer } from "../types.js";
 import { MCPConnectionError, ToolExecutionError } from "../errors.js";
@@ -443,7 +444,19 @@ function toMCPServerLike(config: ConnectConfig): MCPServer {
   };
 }
 
-function createTransport(config: ConnectConfig, overrideArgs?: string[]): Transport {
+/**
+ * @param authProviderOverride When set, used instead of constructing a fresh
+ * `createAuthProvider(...)` — required for the authorization-code retry in
+ * `connectHttpLike` below, which builds a SECOND transport (post-`finishAuth`)
+ * that must reuse the exact same provider instance (its `state`/PKCE
+ * verifier/loopback-listener are all tied to that one instance, not
+ * reconstructible from `config` alone).
+ */
+function createTransport(
+  config: ConnectConfig,
+  overrideArgs?: string[],
+  authProviderOverride?: OAuthClientProvider,
+): Transport {
   const headers = config.headers ?? {};
   const transport = resolveTransport(config);
 
@@ -464,14 +477,16 @@ function createTransport(config: ConnectConfig, overrideArgs?: string[]): Transp
       if (!config.endpoint) throw new Error(
         `MCP server "${config.name}" has transport "streamable-http" but no endpoint specified`,
       );
-      const authProvider = createAuthProvider(toMCPServerLike(config), config.tokenStore ?? getDefaultTokenStore());
+      const authProvider =
+        authProviderOverride ?? createAuthProvider(toMCPServerLike(config), config.tokenStore ?? getDefaultTokenStore());
       return new StreamableHTTPClientTransport(new URL(config.endpoint), { requestInit: { headers }, authProvider });
     }
     case "sse": {
       if (!config.endpoint) throw new Error(
         `MCP server "${config.name}" has transport "sse" but no endpoint specified`,
       );
-      const authProvider = createAuthProvider(toMCPServerLike(config), config.tokenStore ?? getDefaultTokenStore());
+      const authProvider =
+        authProviderOverride ?? createAuthProvider(toMCPServerLike(config), config.tokenStore ?? getDefaultTokenStore());
       return new SSEClientTransport(new URL(config.endpoint), { requestInit: { headers }, authProvider });
     }
     case "websocket":
@@ -481,6 +496,32 @@ function createTransport(config: ConnectConfig, overrideArgs?: string[]): Transp
     default:
       throw new Error(`MCP server "${config.name}": unknown transport "${String(config.transport)}"`);
   }
+}
+
+/** The extra members `createAuthorizationCodeProvider` adds beyond the plain SDK `OAuthClientProvider`. */
+interface AuthorizationCodeProviderHandle {
+  waitForAuthorizationCode(): Promise<string>;
+  disposeAuthorizationListener(): Promise<void>;
+}
+
+/**
+ * Type guard: does `provider` additionally expose the authorization-code
+ * handle above? Only `createAuthorizationCodeProvider`'s return value does
+ * (see `./auth/authorization-code-provider.ts`) — `createAuthProvider`'s
+ * declared return type is the plain SDK `OAuthClientProvider`, so callers
+ * that need the extra members narrow to it explicitly here rather than
+ * widening that public return type.
+ */
+function hasAuthorizationCodeHandle(
+  provider: OAuthClientProvider,
+): provider is OAuthClientProvider & AuthorizationCodeProviderHandle {
+  return (
+    typeof (provider as Partial<AuthorizationCodeProviderHandle>).waitForAuthorizationCode === "function"
+  );
+}
+
+function isInteractiveAuthorizationCode(config: ConnectConfig): boolean {
+  return config.auth?.type === "authorization_code" && config.auth.interactive === true;
 }
 
 // ─── HTTP Reconnect ────────────────────────────────────────────────────────────
@@ -779,9 +820,79 @@ async function connectInternal(config: ConnectConfig): Promise<ActiveConnection>
   }
 
   // ── HTTP / SSE ──
-  const transport = createTransport(config);
-  const sdkClient = new Client({ name: "reactive-agents", version: "1.0.0" }, { capabilities: {} });
-  await sdkClient.connect(transport);
+  return connectHttpLike(config, effectiveTransport);
+}
+
+/**
+ * HTTP/SSE connect, with the authorization-code interactive retry: the SDK
+ * throws `UnauthorizedError` from `sdkClient.connect(transport)` once its
+ * `auth()` orchestrator has called `provider.redirectToAuthorization(url)`
+ * (our provider has, by that point, either already thrown the
+ * `rax mcp login` error — non-interactive — or already started the
+ * loopback listener and opened the browser / called `onAuthorizationUrl` —
+ * interactive). For the interactive case: await the authorization code the
+ * listener collects, call `transport.finishAuth(code)` to exchange it for
+ * tokens, then reconnect with a FRESH transport + client — the SDK's own
+ * `finishAuth` doc comment says this enables "the next connection attempt"
+ * to succeed; the original transport's auth-loop guard
+ * (`_hasCompletedAuthFlow`) and any half-open stream state are not meant to
+ * be reused post-exchange. The same `authProvider` instance carries over,
+ * so the freshly persisted tokens are picked up immediately.
+ */
+async function connectHttpLike(
+  config: ConnectConfig,
+  effectiveTransport: MCPServer["transport"],
+): Promise<ActiveConnection> {
+  const authProvider = config.auth
+    ? createAuthProvider(toMCPServerLike(config), config.tokenStore ?? getDefaultTokenStore())
+    : undefined;
+
+  let transport = createTransport(config, undefined, authProvider);
+  let sdkClient = new Client({ name: "reactive-agents", version: "1.0.0" }, { capabilities: {} });
+
+  try {
+    try {
+      await sdkClient.connect(transport);
+    } catch (err) {
+      if (
+        !(err instanceof UnauthorizedError) ||
+        !isInteractiveAuthorizationCode(config) ||
+        authProvider === undefined ||
+        !hasAuthorizationCodeHandle(authProvider)
+      ) {
+        throw err;
+      }
+
+      mcpDebug(`[MCP oauth] "${config.name}" — waiting for interactive login to complete…`);
+      const code = await authProvider.waitForAuthorizationCode();
+
+      const authTransport = transport as StreamableHTTPClientTransport | SSEClientTransport;
+      await authTransport.finishAuth(code);
+      try {
+        await transport.close();
+      } catch {
+        /* already gone */
+      }
+
+      transport = createTransport(config, undefined, authProvider);
+      sdkClient = new Client({ name: "reactive-agents", version: "1.0.0" }, { capabilities: {} });
+      await sdkClient.connect(transport);
+      mcpDebug(`[MCP oauth] "${config.name}" — interactive login complete`);
+    }
+  } catch (err) {
+    // Any failure past this point (including a non-retryable error from the
+    // FIRST `sdkClient.connect` above, and a retry that itself fails) must
+    // not leave an orphaned, listening loopback socket + live timeout — see
+    // `disposeAuthorizationListener`'s doc comment for why this is needed
+    // even though the happy path and the timeout path both self-close.
+    if (authProvider !== undefined && hasAuthorizationCodeHandle(authProvider)) {
+      await authProvider.disposeAuthorizationListener().catch(() => {
+        /* best-effort cleanup; the original error wins */
+      });
+    }
+    throw err;
+  }
+
   mcpDebug(`[MCP init] "${config.name}" — connected via ${effectiveTransport}`);
   const server = await buildMCPServer(config.name, effectiveTransport, config.endpoint, config, sdkClient);
   return { client: sdkClient, transport, server };

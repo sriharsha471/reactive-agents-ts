@@ -12,13 +12,15 @@
  * both backed by a private instance field that dies with the provider
  * instance).
  *
- * `authorization_code` is Task 4 — deliberately unimplemented here. The
- * `default` branch below is the actual exhaustiveness guard: every currently
- * known `MCPAuthConfig["type"]` has its own `case`, so `config` narrows to
- * `never` in `default`. If a future `MCPAuthConfig` variant is added without
- * a corresponding `case`, `default`'s `config` stops narrowing to `never`
- * and the `satisfies never` assignment fails to compile — a real
- * type-checked exhaustiveness check, not a runtime string comparison.
+ * `authorization_code` is Task 4's `createAuthorizationCodeProvider` — the
+ * interactive, loopback-listener-backed grant (see
+ * `./authorization-code-provider.ts`). The `default` branch below is the
+ * actual exhaustiveness guard: every currently known `MCPAuthConfig["type"]`
+ * has its own `case`, so `config` narrows to `never` in `default`. If a
+ * future `MCPAuthConfig` variant is added without a corresponding `case`,
+ * `default`'s `config` stops narrowing to `never` and the
+ * `satisfies never` assignment fails to compile — a real type-checked
+ * exhaustiveness check, not a runtime string comparison.
  */
 import {
   ClientCredentialsProvider,
@@ -27,6 +29,7 @@ import {
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { MCPServer } from "../../types.js";
+import { createAuthorizationCodeProvider } from "./authorization-code-provider.js";
 import { canonicalResourceKey } from "./token-store.js";
 import type { MCPTokenStore } from "./types.js";
 
@@ -170,7 +173,7 @@ export function createAuthProvider(
     }
 
     case "authorization_code":
-      throw new Error("authorization_code grant not yet supported — see Task 4");
+      return createAuthorizationCodeProvider(server, config, store);
 
     default: {
       // Exhaustiveness guard: every known `MCPAuthConfig["type"]` has a

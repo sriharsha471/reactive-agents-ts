@@ -515,8 +515,16 @@ interface AuthorizationCodeProviderHandle {
 function hasAuthorizationCodeHandle(
   provider: OAuthClientProvider,
 ): provider is OAuthClientProvider & AuthorizationCodeProviderHandle {
+  const candidate = provider as Partial<AuthorizationCodeProviderHandle>;
+  // Both members are required — a provider exposing only one (e.g. a
+  // caller-supplied `type: "provider"` that happens to name a method
+  // `waitForAuthorizationCode` but not `disposeAuthorizationListener`)
+  // must not be treated as ours: the dispose call at the cleanup site
+  // would then throw a synchronous TypeError that masks the real connect
+  // error instead of being caught by its `.catch()`.
   return (
-    typeof (provider as Partial<AuthorizationCodeProviderHandle>).waitForAuthorizationCode === "function"
+    typeof candidate.waitForAuthorizationCode === "function" &&
+    typeof candidate.disposeAuthorizationListener === "function"
   );
 }
 

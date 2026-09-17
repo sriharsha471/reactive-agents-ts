@@ -571,6 +571,13 @@ export const fileEditHandler = (
         ? original.split(oldText).join(newText)
         : original.replace(oldText, newText);
 
+      // The RESULTING file, not just the replacement text, must still be a
+      // valid deliverable — a `.json` file that parses before the edit but not
+      // after it is the same corruption `fileWriteHandler` already refuses;
+      // file-edit must not be a side door around that check.
+      const resultRejection = writeContentRejection(resolved, updated);
+      if (resultRejection !== undefined) throw new Error(resultRejection);
+
       await fs.writeFile(resolved, updated, { encoding: "utf-8" });
       return { edited: true, path: resolved, replacements: replaceAll ? count : 1 };
     },

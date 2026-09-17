@@ -98,3 +98,28 @@ describe("file-edit replaces a region without rewriting the file", () => {
     expect(fileEditTool.riskLevel).toBe("high");
   });
 });
+
+describe("file-edit refuses a result that would corrupt a .json deliverable (final-review I-2)", () => {
+  const seedJson = async (contents: string) => {
+    const dir = await mkdtemp(join(tmpdir(), "ra-edit-json-"));
+    const file = join(dir, "data.json");
+    await writeFile(file, contents, "utf-8");
+    return { dir, file };
+  };
+
+  it("REFUSES an edit whose result is invalid JSON, leaving the original content untouched", async () => {
+    const { dir, file } = await seedJson('{"a": 1}');
+    const r = await edit(dir, { path: file, oldText: '"a": 1', newText: '"a": ' });
+    expect(r._tag).toBe("Left");
+    expect(String((r as { left: { message: string } }).left.message)).toContain("valid JSON");
+    // Original content must be left exactly as it was — no partial write.
+    expect(await readFile(file, "utf-8")).toBe('{"a": 1}');
+  });
+
+  it("succeeds normally when the edit result is still valid JSON", async () => {
+    const { dir, file } = await seedJson('{"a": 1}');
+    const r = await edit(dir, { path: file, oldText: '"a": 1', newText: '"a": 2' });
+    expect(r._tag).toBe("Right");
+    expect(await readFile(file, "utf-8")).toBe('{"a": 2}');
+  });
+});

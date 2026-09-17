@@ -24,6 +24,7 @@ const testAgentCard: AgentCard = {
 interface TestServerOptions {
   readonly port: number;
   readonly executor: (input: string) => Effect.Effect<string, never>;
+  readonly basePath?: string;
 }
 
 interface TestServerHandle {
@@ -34,7 +35,9 @@ interface TestServerHandle {
 async function startTestServer(options: TestServerOptions): Promise<TestServerHandle> {
   const executor: TaskExecutor = (input, _taskId) => options.executor(input);
   const serverLayer = createA2AServer(testAgentCard);
-  const httpLayer = createA2AHttpServer(options.port, executor).pipe(Layer.provide(serverLayer));
+  const httpLayer = createA2AHttpServer(options.port, executor, options.basePath).pipe(
+    Layer.provide(serverLayer),
+  );
 
   const { stop, boundPort } = await Effect.runPromise(
     Effect.gen(function* () {
@@ -128,6 +131,43 @@ describe("A2A HTTP server, live on a real port", () => {
     const sentTask = send.result as A2ATask;
     // Must NOT hang waiting for the executor.
     expect(["submitted", "working"]).toContain(sentTask.status.state);
+    await handle.stop();
+  });
+
+  it("wires basePath: prefixes JSON-RPC, /agent/card, and /.well-known/agent.json, and 404s the unprefixed routes", async () => {
+    const handle = await startTestServer({
+      port: 0,
+      executor: () => Effect.succeed("ok"),
+      basePath: "/api/agents",
+    });
+
+    // JSON-RPC now lives at {basePath}, not "/".
+    const rpcRes = await fetch(`http://127.0.0.1:${handle.port}/api/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "agent/card", params: {}, id: "1" }),
+    });
+    const rpcBody = (await rpcRes.json()) as JsonRpcResponse;
+    expect((rpcBody.result as AgentCard).name).toBe("Live Test Agent");
+
+    // Fallback card discovery is prefixed too.
+    const cardRes = await fetch(`http://127.0.0.1:${handle.port}/api/agents/agent/card`);
+    expect((await cardRes.json())).toMatchObject({ name: "Live Test Agent" });
+
+    // Standard well-known discovery is prefixed too.
+    const wellKnownRes = await fetch(
+      `http://127.0.0.1:${handle.port}/api/agents/.well-known/agent.json`,
+    );
+    expect((await wellKnownRes.json())).toMatchObject({ name: "Live Test Agent" });
+
+    // The old unprefixed root no longer answers JSON-RPC.
+    const rootRes = await fetch(`http://127.0.0.1:${handle.port}/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "agent/card", params: {}, id: "2" }),
+    });
+    expect(rootRes.status).toBe(404);
+
     await handle.stop();
   });
 });

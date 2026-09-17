@@ -31,19 +31,29 @@ const JSONRPC_VERSION = "2.0";
 
 type JsonRpcId = JsonRpcRequest["id"];
 
-type JsonRpcMethod =
-  | "message/send"
-  | "message/stream"
-  | "tasks/get"
-  | "tasks/cancel"
-  | "tasks/sendSubscribe"
-  | "agent/card";
+/** Strips a trailing slash and ensures a single leading slash; `undefined`/`"/"` normalize to `""` (no prefix). */
+const normalizeBasePath = (basePath?: string): string => {
+  if (!basePath || basePath === "/") return "";
+  const trimmed = basePath.replace(/\/+$/, "");
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+};
 
-export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor) =>
+export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor, basePath?: string) =>
   Layer.effect(
     A2AHttpServer,
     Effect.gen(function* () {
       const server = yield* A2AServer;
+      const base = normalizeBasePath(basePath);
+      // All three routes live under `base` (default `""`, i.e. root) — the
+      // JSON-RPC endpoint at `base` itself (or `/` when there is no base),
+      // the fallback card at `base/agent/card`, and A2A standard discovery
+      // at `base/.well-known/agent.json`. Clients (`a2a-client.ts`,
+      // `discovery.ts`) already treat these as relative to whatever base URL
+      // they're given, so prefixing all three keeps client and server in
+      // sync without touching the JSON-RPC dispatch logic itself.
+      const rpcPath = base === "" ? "/" : base;
+      const cardPath = `${base}/agent/card`;
+      const wellKnownPath = `${base}/.well-known/agent.json`;
       // Single task store: the http server writes/reads through the
       // A2AServer service's own store (via TaskStore's getTask/setTask),
       // rather than keeping a second independent Ref. This is what makes
@@ -177,22 +187,22 @@ export const createA2AHttpServer = (port: number = 3000, executor?: TaskExecutor
               fetch: async (req) => {
                 const url = new URL(req.url);
 
-                // GET /.well-known/agent.json — A2A standard discovery
-                if (req.method === "GET" && url.pathname === "/.well-known/agent.json") {
+                // GET {base}/.well-known/agent.json — A2A standard discovery
+                if (req.method === "GET" && url.pathname === wellKnownPath) {
                   return new Response(JSON.stringify(agentCard), {
                     headers: { "Content-Type": "application/json" },
                   });
                 }
 
-                // GET /agent/card — fallback discovery
-                if (req.method === "GET" && url.pathname === "/agent/card") {
+                // GET {base}/agent/card — fallback discovery
+                if (req.method === "GET" && url.pathname === cardPath) {
                   return new Response(JSON.stringify(agentCard), {
                     headers: { "Content-Type": "application/json" },
                   });
                 }
 
-                // POST / — JSON-RPC endpoint
-                if (req.method === "POST") {
+                // POST {base} (default "/") — JSON-RPC endpoint
+                if (req.method === "POST" && url.pathname === rpcPath) {
                   try {
                     const body = (await req.json()) as JsonRpcRequest;
 

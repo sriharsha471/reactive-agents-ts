@@ -26,7 +26,14 @@ export const generateAgentCard = (config: AgentCardGeneratorConfig): AgentCard =
       url: config.organizationUrl,
     },
     capabilities: {
-      streaming: config.capabilities?.streaming ?? true,
+      // Real SSE streaming isn't implemented yet — `handleMessageStream`
+      // (server/http-server.ts) just awaits full completion and joins the
+      // events into one body, and `createSSEStream` (server/streaming.ts)
+      // never enqueues anything. Advertising `streaming: true` by default
+      // would let a client rely on a capability we don't have. A caller who
+      // has actually wired real streaming can still opt in explicitly via
+      // `config.capabilities.streaming`.
+      streaming: config.capabilities?.streaming ?? false,
       pushNotifications: config.capabilities?.pushNotifications ?? false,
       ...config.capabilities,
     },

@@ -748,9 +748,12 @@ export interface A2AOptions {
      */
     readonly port?: number
     /**
-     * Base path for A2A endpoints (e.g., `/api/agents` → `http://localhost:3000/api/agents/rpc`).
+     * Base path prefix for all three A2A routes — JSON-RPC (e.g., `/api/agents`
+     * → `http://localhost:3000/api/agents`), the fallback card
+     * (`/api/agents/agent/card`), and standard discovery
+     * (`/api/agents/.well-known/agent.json`).
      *
-     * Default: `/` (root)
+     * Default: `/` (root, i.e. no prefix)
      */
     readonly basePath?: string
 }

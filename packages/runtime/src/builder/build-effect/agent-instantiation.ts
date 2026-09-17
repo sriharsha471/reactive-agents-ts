@@ -50,6 +50,8 @@ export interface AgentInstantiationDeps {
    * port or reached the agent) — it now only carries this default.
    */
   readonly a2aDefaultPort?: number;
+  /** Default base path for `ReactiveAgent.serveA2A()`, sourced from `.withA2A({basePath})`. */
+  readonly a2aDefaultBasePath?: string;
   readonly mcpServerNames: readonly string[];
   readonly gatewayOptions?: GatewayOptions;
   readonly streamDensity?: StreamDensity;
@@ -174,5 +176,6 @@ export const instantiateAgent = (deps: AgentInstantiationDeps): ReactiveAgent =>
     deps.kernelMetaTools,
     deps.name,
     deps.a2aDefaultPort,
+    deps.a2aDefaultBasePath,
   );
 };

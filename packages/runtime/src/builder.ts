@@ -2724,6 +2724,7 @@ export class ReactiveAgentBuilder<TOut = unknown> {
                 agentId,
                 name: self._name,
                 a2aDefaultPort: self._a2aOptions?.port,
+                a2aDefaultBasePath: self._a2aOptions?.basePath,
                 mcpServerNames: mcpServers.map((s) => s.name),
                 gatewayOptions,
                 streamDensity,

@@ -1,13 +1,10 @@
-import type { A2AMessage, A2ATask, AgentCard } from "../types.js";
-import { A2AError, TaskNotFoundError, TaskCanceledError, InvalidTaskStateError } from "../errors.js";
+import type { A2ATask, AgentCard } from "../types.js";
+import { TaskNotFoundError, TaskCanceledError, InvalidTaskStateError } from "../errors.js";
 import { Effect, Context, Layer, Ref } from "effect";
 
 export class A2AServer extends Context.Tag("A2AServer")<
   A2AServer,
   {
-    readonly setMessageHandler: (
-      handler: (message: A2AMessage) => Effect.Effect<A2AMessage, A2AError>,
-    ) => Effect.Effect<void>;
     readonly getTask: (id: string) => Effect.Effect<A2ATask, TaskNotFoundError>;
     readonly setTask: (task: A2ATask) => Effect.Effect<void>;
     readonly cancelTask: (id: string) => Effect.Effect<A2ATask, TaskNotFoundError | TaskCanceledError | InvalidTaskStateError>;
@@ -19,7 +16,6 @@ interface TaskStore {
   tasks: Map<string, A2ATask>;
 }
 
-const generateId = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
 
 export const createA2AServer = (agentCard: AgentCard) =>
@@ -29,8 +25,6 @@ export const createA2AServer = (agentCard: AgentCard) =>
       const store = yield* Ref.make<TaskStore>({ tasks: new Map() });
 
       return {
-        setMessageHandler: () => Effect.sync(() => {}),
-
         getTask: (id) =>
           Effect.gen(function* () {
             const state = yield* Ref.get(store);

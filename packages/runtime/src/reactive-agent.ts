@@ -276,7 +276,13 @@ export class ReactiveAgent<TOut = unknown> {
          * @internal Default port for `serveA2A()`, from `.withA2A({port})`.
          * `.withA2A()` builds no layer — see `serveA2A()`'s doc comment.
          */
-        private readonly _a2aDefaultPort?: number
+        private readonly _a2aDefaultPort?: number,
+        /**
+         * @internal Default base path for `serveA2A()`, from `.withA2A({basePath})`.
+         * Prefixes all three A2A routes (JSON-RPC, `/agent/card`,
+         * `/.well-known/agent.json`) — see `http-server.ts`'s `normalizeBasePath`.
+         */
+        private readonly _a2aDefaultBasePath?: string
     ) {}
 
     /**
@@ -955,7 +961,8 @@ export class ReactiveAgent<TOut = unknown> {
      * which composed at runtime-construction time — before the agent existed —
      * and so bound no port and reached no executor (dead code, deleted
      * alongside this method). `.withA2A(options)` itself is kept as a config
-     * carrier: its `port` is the default here when the caller omits one.
+     * carrier: its `port` and `basePath` are the defaults here when the
+     * caller omits them.
      *
      * Cancel correlation: A2A's minted `taskId` (`task-handler.ts`) is passed
      * straight into `run()`'s own `options.taskId`, which `buildRunTaskEffect`
@@ -974,9 +981,12 @@ export class ReactiveAgent<TOut = unknown> {
         readonly token?: string
         /** Overrides the Agent Card `name`; defaults to the name set via `.withName()`. */
         readonly name?: string
+        /** Prefixes all A2A routes; defaults to the base path set via `.withA2A({basePath})`. */
+        readonly basePath?: string
     }): Promise<{ readonly port: number; stop(): Promise<void> }> {
         const port = options?.port ?? this._a2aDefaultPort ?? 3000
         const name = options?.name ?? this._name ?? this.agentId
+        const basePath = options?.basePath ?? this._a2aDefaultBasePath
 
         // Executor seam: (input, taskId) => Effect<string, A2AError>. Threads
         // A2A's taskId into run() so cancel() correlation holds (see doc
@@ -1033,11 +1043,12 @@ export class ReactiveAgent<TOut = unknown> {
             description: options?.description,
             // Actual bound port isn't known until `start()` resolves (esp. with
             // `port: 0`), so the card's `url` uses the requested port; callers
-            // that need the resolved port read `handle.port`.
-            url: `http://${options?.hostname ?? '127.0.0.1'}:${port}`,
+            // that need the resolved port read `handle.port`. Includes
+            // `basePath` when set, since that's where the routes actually live.
+            url: `http://${options?.hostname ?? '127.0.0.1'}:${port}${basePath ?? ''}`,
         })
 
-        const serverLayer = createA2AHttpServer(port, executor).pipe(
+        const serverLayer = createA2AHttpServer(port, executor, basePath).pipe(
             Layer.provide(createA2AServer(agentCard)),
         )
 

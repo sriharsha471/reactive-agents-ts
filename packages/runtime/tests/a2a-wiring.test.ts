@@ -44,6 +44,61 @@ describe("agent.serveA2A()", () => {
     }
   });
 
+  // Task 2 fix-round-1 finding: the executor only read `result.output`, never
+  // `result.success`. `run()`'s documented contract (reactive-agent.ts, the
+  // BARE_BUILDER_THROWS_ON comment) has abstention resolve `success: false`
+  // WITHOUT throwing — so an A2A caller who triggers it got back
+  // `state: "completed"`, indistinguishable from a real answer. This forces
+  // the same `requiredToolUnavailable` abstention trigger used by
+  // `abstention-is-not-success.test.ts` through the real A2A HTTP path and
+  // asserts the task ends up `state: "failed"`, not `"completed"`.
+  it("an agent that abstains reports the A2A task as failed, not completed", async () => {
+    const agent = await ReactiveAgents.create()
+      .withName("a2a-abstain-agent")
+      .withProvider("test")
+      .withModel("test")
+      .withTestScenario([
+        { text: "I cannot ground this without the required tool." },
+        { text: "I cannot ground this without the required tool." },
+      ] as never)
+      .withTools({ builtins: [], adaptive: false } as never)
+      .withRequiredTools({ tools: ["tool-that-does-not-exist"] })
+      .withReasoning({ defaultStrategy: "reactive" })
+      .withMaxIterations(2)
+      .build();
+
+    const handle = await agent.serveA2A({ port: 0 });
+
+    try {
+      const res = (await fetch(`http://127.0.0.1:${handle.port}/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "message/send",
+          params: {
+            message: {
+              role: "user",
+              parts: [
+                { kind: "text", text: "What is the population of the fictional city of Aetheria?" },
+              ],
+            },
+            configuration: { blocking: true },
+          },
+          id: "1",
+        }),
+      }).then((r) => r.json())) as {
+        result: { status: { state: string; message?: string } };
+      };
+
+      expect(res.result.status.state).toBe("failed");
+      expect(res.result.status.message).toBeString();
+    } finally {
+      await handle.stop();
+      await agent.dispose();
+    }
+  }, 20000);
+
   it("serves a spec-conformant agent card at /.well-known/agent.json", async () => {
     const agent = await ReactiveAgents.create()
       .withName("card-agent")

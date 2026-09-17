@@ -984,13 +984,49 @@ export class ReactiveAgent<TOut = unknown> {
         // letting them escape as raw Error/unknown.
         const executor = (input: string, taskId: string): Effect.Effect<string, A2AError> =>
             Effect.tryPromise({
-                try: () => this.run(input, { taskId }).then((result) => result.output),
+                try: () => this.run(input, { taskId }),
                 catch: (e) =>
                     new A2AError({
                         code: 'INTERNAL_ERROR',
                         message: e instanceof Error ? e.message : String(e),
                     }),
-            })
+            }).pipe(
+                Effect.flatMap((result) => {
+                    // `run()`'s documented contract (see the BARE_BUILDER_THROWS_ON
+                    // comment above): abstention, fabrication-guard rejection, and
+                    // empty-output-no-deliverable all resolve with `success: false`
+                    // WITHOUT throwing — the agent completed and was graded, not a
+                    // runtime failure. If this executor only read `.output`, those
+                    // graceful declines would surface to an A2A caller as
+                    // `state: "completed"`, indistinguishable from a real answer.
+                    // Branch on `success` and fail the Effect so
+                    // `createTaskHandler`'s `Effect.catchAll` (task-handler.ts)
+                    // maps it to `state: "failed"` instead.
+                    if (result.success) return Effect.succeed(result.output)
+
+                    const message =
+                        result.error ??
+                        (result.abstention
+                            ? `Agent declined to complete the task: ${result.abstention.reason}`
+                            : result.output.length > 0
+                              ? result.output
+                              : 'Agent declined to complete the task')
+
+                    // No dedicated "agent declined" code exists in A2AError's
+                    // code family (see errors.ts) and the finding's constraint is
+                    // not to invent one. `INTERNAL_ERROR` is the same generic
+                    // bucket this executor's own `catch` above already uses for
+                    // genuine execution failures, and what `A2AError.parse`
+                    // defaults to — reusing it keeps the code space unchanged;
+                    // `message` carries the distinguishing content.
+                    return Effect.fail(
+                        new A2AError({
+                            code: 'INTERNAL_ERROR',
+                            message,
+                        }),
+                    )
+                }),
+            )
 
         const agentCard = generateAgentCard({
             name,

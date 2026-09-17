@@ -15,7 +15,7 @@ export class A2AService extends Context.Tag("A2AService")<
     readonly getTask: (id: string) => Effect.Effect<A2ATask, A2AError>;
     readonly cancelTask: (id: string) => Effect.Effect<A2ATask, A2AError>;
     // Client operations
-    readonly sendRemoteMessage: (params: SendMessageParams) => Effect.Effect<{ taskId: string }, A2AError | TransportError>;
+    readonly sendRemoteMessage: (params: SendMessageParams) => Effect.Effect<A2ATask, A2AError | TransportError>;
     readonly getRemoteTask: (params: TaskQueryParams) => Effect.Effect<A2ATask, A2AError | TransportError>;
     readonly discoverRemoteAgent: (url: string) => Effect.Effect<AgentCard, DiscoveryError | TransportError>;
   }

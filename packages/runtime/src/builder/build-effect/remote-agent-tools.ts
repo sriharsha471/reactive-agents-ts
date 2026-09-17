@@ -30,6 +30,7 @@ const TERMINAL_TASK_STATES: ReadonlySet<string> = new Set([
   "canceled",
   "rejected",
   "input_required",
+  "unknown",
 ]);
 
 /**

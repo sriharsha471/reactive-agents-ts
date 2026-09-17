@@ -564,8 +564,120 @@ headers: {
 ```
 
 :::note[OAuth flow]
-The `headers` field accepts a pre-obtained Bearer token. If your server requires OAuth token exchange (PKCE, device flow, etc.), complete the OAuth flow separately and pass the resulting access token here.
+The `headers` field accepts a pre-obtained Bearer token you manage yourself. If you want RA to run the OAuth flow for you (discovery, token exchange, refresh, secure storage), use the `auth` config described below instead.
 :::
+
+### OAuth 2.1 (`auth`)
+
+For remote servers (`streamable-http`/`sse`) protected by OAuth 2.1, pass an `auth` config and RA drives
+the whole flow itself — discovery, token exchange, automatic refresh, and secure on-disk storage. This
+is not available for `stdio` servers: a `stdio` config with `auth` set is a **startup error** — stdio
+servers get credentials from the environment via `env` (see [Per-server environment
+variables](#per-server-environment-variables) above), not OAuth.
+
+#### Picking a grant
+
+| Situation | Grant |
+|-----------|-------|
+| Unattended / production agent (cron, server, CI) — no human present | `client_credentials` |
+| Same, but the server requires asymmetric client auth (JWT-signed) instead of a shared secret | `private_key_jwt` |
+| A human is running an agent that needs to act on **their own** account | `authorization_code` |
+
+`client_credentials` and `private_key_jwt` never open a browser or need a human — the agent authenticates
+as itself:
+
+```typescript
+const agent = await ReactiveAgents.create()
+  .withMCP({
+    name: "billing",
+    transport: "streamable-http",
+    endpoint: "https://mcp.example.com/mcp",
+    auth: {
+      type: "client_credentials",
+      clientId: process.env.MCP_CLIENT_ID!,
+      clientSecret: process.env.MCP_CLIENT_SECRET!,
+    },
+  })
+  .build();
+```
+
+`authorization_code` delegates access to a specific user. It needs a one-time interactive login **before**
+the agent runs — see [`rax mcp login`](#rax-mcp-login--logout--status) below:
+
+```typescript
+const agent = await ReactiveAgents.create()
+  .withMCP({
+    name: "my-calendar",
+    transport: "streamable-http",
+    endpoint: "https://mcp.example.com/mcp",
+    auth: { type: "authorization_code" }, // run `rax mcp login my-calendar` once first
+  })
+  .build();
+```
+
+`interactive` defaults to **`false`**. An unattended agent run must never unexpectedly try to open a
+browser or bind a local port — if credentials aren't already on disk (or in your `tokenStore`) when an
+`authorization_code` server connects, the connection fails closed with an error instead of popping a
+browser. Only `rax mcp login` (or explicitly passing `interactive: true`) triggers the interactive flow.
+
+#### Secrets are plain config — you source them
+
+`clientSecret` and `privateKey` (for `private_key_jwt`) are ordinary config values. **RA does not do any
+environment-variable interpolation** — read them from `process.env` yourself, as in the example above.
+Never hardcode a secret in source.
+
+#### Where tokens are stored
+
+By default, tokens are persisted to `~/.reactive-agents/mcp-auth/` — one file per resource, named by a
+hash of the canonical resource URL (never the raw URL or client id). The directory is created `chmod
+0700` and each credential file `chmod 0600`; both `get()` and `list()` refuse to read a file whose
+permissions have been loosened. You can supply your own store instead — e.g. an in-memory store for
+tests/CI so nothing touches disk:
+
+```typescript
+import { createMemoryTokenStore } from "@reactive-agents/tools"
+
+const agent = await ReactiveAgents.create()
+  .withMCP({
+    name: "billing",
+    transport: "streamable-http",
+    endpoint: "https://mcp.example.com/mcp",
+    auth: { type: "client_credentials", clientId: "...", clientSecret: process.env.MCP_CLIENT_SECRET! },
+    tokenStore: createMemoryTokenStore(),
+  })
+  .build();
+```
+
+#### `rax mcp login` / `logout` / `status`
+
+Run once, ahead of time, for any server using `authorization_code`:
+
+```bash
+rax mcp login <name|--url <endpoint>> [--client-id <id>] [--scope <scope>] [--no-browser] [--timeout <ms>] [--mcp-config <path>]
+rax mcp logout <name|--url <endpoint>> [--mcp-config <path>]
+rax mcp status
+```
+
+- `login` — runs the interactive authorization flow and stores the resulting tokens. `<name>` resolves
+  against `.rax/mcp.json` (or `--mcp-config <path>`); use `--url <endpoint>` for an ad-hoc server with no
+  config file. `--no-browser` still prints the authorization URL (for headless/SSH sessions) but doesn't
+  try to launch one. `--client-id` skips dynamic client registration when the server needs a statically
+  registered client.
+- `logout` — deletes the stored credentials for a server, attempting revocation first (best-effort; local
+  deletion always happens even if the revocation endpoint is unreachable).
+- `status` — lists every stored credential (resource, scope, expiry, whether a refresh token is present).
+  **Never prints access or refresh tokens.**
+
+#### What RA does not do
+
+- Host an OAuth authorization server — RA is a **client** only; you point it at a server you (or a
+  third party) already run.
+- Anything beyond the MCP SDK's own dynamic client registration (RA doesn't add a second registration
+  layer on top).
+- OS keychain storage (macOS Keychain, libsecret, Windows Credential Manager) — the default store is a
+  permissioned file on disk. Bring your own `tokenStore` if you need keychain-backed storage.
+- RFC 8693 token exchange (delegating a user's token to a sub-agent with attenuated scope).
+- Tool-description pinning or re-consent when a server's tool list mutates mid-session.
 
 ### Multiple MCP Servers
 

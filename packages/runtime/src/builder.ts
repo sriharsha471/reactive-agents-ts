@@ -1865,12 +1865,38 @@ export class ReactiveAgentBuilder<TOut = unknown> {
     /**
      * Connect one or more Model Context Protocol (MCP) servers.
      *
-     * MCP servers expose tools via a standardized protocol (stdio, SSE, or WebSocket).
-     * Tools are automatically discovered and added to the agent's tool registry.
-     * Implicitly enables the tools layer.
+     * MCP servers expose tools via a standardized protocol (stdio, SSE/streamable-HTTP,
+     * or WebSocket). Tools are automatically discovered and added to the agent's tool
+     * registry. Implicitly enables the tools layer.
+     *
+     * HTTP-transport servers (`streamable-http`/`sse`) that require OAuth 2.1 accept an
+     * `auth` config. Unattended/production agents should use `client_credentials` or
+     * `private_key_jwt` (no user interaction, no browser). Delegated user access uses
+     * `authorization_code` — run `rax mcp login <name>` once beforehand; `interactive`
+     * defaults to `false` so a scheduled/production run never unexpectedly tries to open
+     * a browser. `tokenStore` defaults to a file store under `~/.reactive-agents/mcp-auth`
+     * (permissions 0700/0600); pass `createMemoryTokenStore()` for tests/CI. `auth` on a
+     * `stdio` server is a startup error — stdio servers take credentials via `env`.
      *
      * @param config - MCP server configuration(s) — can be a single config or array
      * @returns `this` for chaining
+     * @example
+     * ```typescript
+     * import { createFileTokenStore } from "@reactive-agents/tools"
+     *
+     * const agent = await ReactiveAgents.create()
+     *   .withMCP({
+     *     name: "billing",
+     *     endpoint: "https://mcp.example.com/mcp",
+     *     auth: {
+     *       type: "client_credentials",
+     *       clientId: process.env.MCP_CLIENT_ID!,
+     *       clientSecret: process.env.MCP_CLIENT_SECRET!,
+     *     },
+     *     tokenStore: createFileTokenStore(), // omit to use the same default
+     *   })
+     *   .build()
+     * ```
      */
     withMCP(config: MCPServerConfig | MCPServerConfig[]): this {
         applyWithMCP(this, config)

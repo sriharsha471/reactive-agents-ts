@@ -54,7 +54,7 @@
 
 ### Claims to verify in Task 0
 
-The research pass (2026-09-17) reported a 2026-07-28 MCP spec revision (RFC 8707 on clients as MUST, RFC 8693 token exchange, scope step-up). The installed SDK targets `2025-11-25`. Task 0 resolves this and checks the SDK's actual client behavior for each "SDK handles it" assumption above.
+**Resolved (2026-09-17), correcting the research pass:** `2026-07-28` is a real, current MCP spec revision (`2025-11-25`, what the installed SDK targets, is now superseded/"Final") — but the prior research pass mis-attributed what changed in it. RFC 8707's `resource` parameter was **already MUST** in `2025-11-25`; `2026-07-28` didn't touch that requirement. **RFC 8693 (token exchange) does not appear anywhere in the MCP spec** — neither revision mentions it; the Follow-ups entry below already correctly treats it as an unrelated, separate future concern. What `2026-07-28` actually adds that's OAuth-relevant: **RFC 9207 authorization-server issuer (`iss`) validation** — clients **MUST** record the authorization server's `issuer` before redirecting and validate a returned `iss` parameter against it before redeeming the authorization code. The installed SDK (1.29.0) implements none of this (confirmed: zero references to `iss`/9207 anywhere in `client/auth.js`, `client/streamableHttp.js`, `client/sse.js`, `shared/auth.js`) — this is a new requirement, not currently assigned to any task; see `task-0-report.md`'s gap list item 2 for a recommendation to add it to Task 4 (alongside `state` in the loopback listener) with Task 5 enforcing it. Full gap list, quoted spec text, and the regression-pin test are in `.superpowers/sdd/2026-09-17-mcp-client-oauth/task-0-report.md`.
 
 ---
 
@@ -116,7 +116,7 @@ Behavior — real HTTP on ephemeral loopback ports, tokens are real JWTs signed 
 - Protected MCP server exposing one tool (`whoami`, returns the token's `sub`). Validates `aud` = its own URL, returns 401 with `WWW-Authenticate: Bearer resource_metadata="…"`, serves RFC 9728 metadata.
 - Authorization server: RFC 8414 metadata; `/authorize` auto-approves and redirects with `code` + echoed `state`; `/token` supporting `authorization_code` (verifies PKCE S256 and `resource`), `refresh_token` (rotates), `client_credentials`; `/register` (RFC 7591).
 - Records every request for assertions.
-- `FixtureOverrides` for attack tests: `issuerMismatch`, `onlyPlainPkce`, `authorizationEndpoint` (arbitrary string), `httpEndpointsOnNonLoopbackName`, `refreshReturnsInvalidGrant`, `requireScope`, `omitStateOnRedirect`, `wrongStateOnRedirect`.
+- `FixtureOverrides` for attack tests: `issuerMismatch`, `onlyPlainPkce`, `authorizationEndpoint` (arbitrary string), `httpEndpointsOnNonLoopbackName`, `refreshReturnsInvalidGrant`, `requireScope`, `omitStateOnRedirect`, `wrongStateOnRedirect`, `advertiseIssParameterSupported` (sets `authorization_response_iss_parameter_supported: true` in AS metadata, per RFC 9207 — Task 0 finding), `omitIssOnRedirect`, `wrongIssOnRedirect`.
 
 - [ ] **Step 1:** Write `fixture.test.ts` proving the fixture itself behaves (unauthenticated → 401 with metadata header; valid token → tool call works; wrong `aud` → 401; PKCE mismatch → token endpoint error).
 - [ ] **Step 2:** Implement. Use the SDK's `McpServer` + `WebStandardStreamableHTTPServerTransport` for the MCP side.
@@ -229,15 +229,18 @@ Secrets in config: document that `clientSecret` / `privateKey` should come from 
 
 **Interfaces produced:**
 - `createAuthorizationCodeProvider(server, config, store): OAuthClientProvider & { waitForAuthorizationCode(): Promise<string> }`
-- `startLoopbackRedirectListener({ port?, path, expectedState, timeoutMs }): Promise<{ redirectUrl: URL; code: Promise<string>; close(): Promise<void> }>`
+- `startLoopbackRedirectListener({ port?, path, expectedState, expectedIssuer?, issParameterRequired, timeoutMs }): Promise<{ redirectUrl: URL; code: Promise<string>; close(): Promise<void> }>`
 - `openBrowser(url: URL): Promise<void>` — `xdg-open` / `open` / `cmd /c start ""` chosen by platform, spawned with an argv array.
 
 Connect flow: transport throws `UnauthorizedError` after the SDK calls `redirectToAuthorization(url)` → if `interactive`, the provider has already started the listener and launched the browser (or called `onAuthorizationUrl`) → await the code → `transport.finishAuth(code)` → reconnect with a fresh transport. If not `interactive`, `redirectToAuthorization` throws an `MCPConnectionError` naming `rax mcp login <name>`, and no listener or browser starts.
+
+**RFC 9207 `iss` validation (Task 0 finding, current `2026-07-28` spec, unimplemented by SDK 1.29.0 — assigned here, not to Task 5, because the redirect listener is the only place that ever sees the callback's `iss` query parameter):** before building the authorization URL, record the authorization server's `issuer` value from its discovered metadata (`expectedIssuer`) and whether it advertises `authorization_response_iss_parameter_supported: true` (`issParameterRequired`). On the callback: if `issParameterRequired` and `iss` is absent, reject exactly like a missing `state`. If `iss` is present, it MUST string-equal `expectedIssuer`; on mismatch, reject and keep waiting (same handling as a `state` mismatch — do not distinguish an attacker's signal from a benign retry). If `issParameterRequired` is false and `iss` is absent, proceed (back-compat with authorization servers not yet on RFC 9207).
 
 - [ ] **Step 1: Failing tests** (fixture + `onAuthorizationUrl` hook that performs the redirect with `fetch` instead of a real browser):
   1. **RED-ON-CUT:** interactive flow completes, `whoami` works, tokens persisted; second connect performs no authorization.
   2. Non-interactive with no stored token → `MCPConnectionError` containing `rax mcp login`, no port bound (assert with a connect attempt to the would-be port or by spying `startLoopbackRedirectListener`), `openBrowser` not called.
   3. `state` missing on callback → rejected, listener keeps waiting, ends in timeout error. Wrong `state` → same.
+  3a. **RFC 9207:** fixture configured with `authorization_response_iss_parameter_supported: true` — callback missing `iss` → rejected, listener keeps waiting. Callback with `iss` not matching the recorded issuer → rejected. Callback with matching `iss` → succeeds. Fixture without that metadata flag and no `iss` on the callback → succeeds (back-compat path).
   4. Callback on the wrong path or with `POST` → 404/405; still waiting.
   5. Listener bound to `127.0.0.1`, not `0.0.0.0` (inspect the server's address).
   6. Second callback after success → connection refused (single use; listener closed).

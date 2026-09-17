@@ -158,6 +158,37 @@ const agent = await ReactiveAgents.create()
 
 You can pass an **array** to `.withMCP([...])`, or chain `.withMCP()` multiple times, to connect several servers at once — and combine them with `ToolBuilder` custom tools in the same agent. The model sees every tool uniformly and picks whichever it needs.
 
+### streamable-http with OAuth 2.1
+
+`headers` above works for a pre-obtained token you manage yourself. If the server speaks OAuth 2.1 and
+you want RA to handle discovery, token exchange, refresh, and storage, use `auth` instead. For an
+unattended agent (no human present), use `client_credentials`:
+
+```typescript
+const agent = await ReactiveAgents.create()
+  .withProvider("anthropic")
+  .withReasoning()
+  .withMCP({
+    name: "billing",
+    transport: "streamable-http",
+    endpoint: "https://mcp.example.com/mcp",
+    auth: {
+      type: "client_credentials",
+      clientId: process.env.MCP_CLIENT_ID!,
+      clientSecret: process.env.MCP_CLIENT_SECRET!,
+    },
+  })
+  .build();
+```
+
+If the agent needs to act on behalf of a specific human, use `authorization_code` and run `rax mcp login
+<name>` once, ahead of time, to complete the interactive browser login — the agent itself never opens a
+browser (`interactive` defaults to `false` for exactly this reason). Tokens land in
+`~/.reactive-agents/mcp-auth/` (permission-locked to your user) unless you pass your own `tokenStore`
+(e.g. `createMemoryTokenStore()` for tests). Full grant-selection guidance, the token-store contract, and
+the `rax mcp login|logout|status` command reference are in the [Tools guide's OAuth
+section](/guides/tools/#oauth-21-auth).
+
 ## Step 4 — Adaptive tool calling on local *and* frontier models
 
 Not every model speaks the same function-calling dialect. Frontier APIs (Anthropic, OpenAI, Gemini) expose native structured `tool_use`/`tool_calls`; many local models only produce tool calls as text. Reactive Agents probes the active model's dialect and routes to either a native function-calling driver or a text-parsing driver (XML / JSON / pseudo-code) — so the *exact same agent code* runs against a frontier API or a 4B+ Ollama model with no changes:

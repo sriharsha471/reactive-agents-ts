@@ -321,6 +321,79 @@ describe("ToolService", () => {
     await Effect.runPromise(program.pipe(Effect.provide(TestToolLayer)));
   });
 
+  it("registers an MCP tool whose schema uses JSON Schema's \"integer\" type (found live against Google Home MCP)", async () => {
+    // Real MCP tool schemas can legitimately use "integer" — a distinct
+    // JSON Schema type from "number" — for an integer-only parameter.
+    // ToolParameter's own doc comment says "number" already covers
+    // "integer or float"; before normalizeJsonSchemaType existed, any such
+    // tool failed to register at all (a `Schema.Literal` mismatch on
+    // `type`), which is exactly what happened live against every
+    // integer-parameter tool Google's Home MCP server advertises.
+    const integerToolServer = Bun.serve({
+      port: 0,
+      idleTimeout: 5,
+      fetch(req) {
+        if (req.method !== "POST") return new Response("Not Found", { status: 404 });
+        return req.json().then((body: { id: unknown; method: string }) => {
+          if (body.method === "initialize") {
+            return Response.json({
+              jsonrpc: "2.0",
+              id: body.id,
+              result: {
+                protocolVersion: "2024-11-05",
+                capabilities: { tools: {} },
+                serverInfo: { name: "integer-tool-mcp", version: "1.0.0" },
+              },
+            });
+          }
+          if (body.method === "tools/list") {
+            return Response.json({
+              jsonrpc: "2.0",
+              id: body.id,
+              result: {
+                tools: [
+                  {
+                    name: "set_count",
+                    description: "Sets a count",
+                    inputSchema: {
+                      type: "object",
+                      properties: {
+                        count: { type: "integer", description: "How many" },
+                        label: { type: "string", description: "A label" },
+                      },
+                      required: ["count"],
+                    },
+                  },
+                ],
+              },
+            });
+          }
+          return Response.json({ jsonrpc: "2.0", id: body.id, result: {} });
+        });
+      },
+    });
+
+    try {
+      const program = Effect.gen(function* () {
+        const tools = yield* ToolService;
+        yield* tools.connectMCPServer({
+          name: "integer-tool-server",
+          transport: "streamable-http",
+          endpoint: `http://localhost:${integerToolServer.port}/mcp`,
+        });
+        return yield* tools.getTool("integer-tool-server/set_count");
+      });
+
+      const def = await Effect.runPromise(program.pipe(Effect.provide(TestToolLayer)));
+      const countParam = def.parameters.find((p) => p.name === "count");
+      expect(countParam?.type).toBe("number");
+      const labelParam = def.parameters.find((p) => p.name === "label");
+      expect(labelParam?.type).toBe("string");
+    } finally {
+      integerToolServer.stop(true);
+    }
+  });
+
   it("should disconnect from an MCP server", async () => {
     const program = Effect.gen(function* () {
       const tools = yield* ToolService;

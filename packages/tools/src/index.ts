@@ -46,6 +46,20 @@ export type { RegisteredTool } from "./registry/tool-registry.js";
 // ─── MCP Client ───
 export { makeMCPClient, cleanupMcpTransport, buildMcpSubprocessEnv } from "./mcp/mcp-client.js";
 
+// ─── MCP Client OAuth (Task 2, 2026-09-17) ───
+export type {
+  MCPAuthConfig,
+  MCPTokenStore,
+  StoredMcpCredentials,
+  OAuthDiscoveryState,
+} from "./mcp/auth/types.js";
+export {
+  canonicalResourceKey,
+  createMemoryTokenStore,
+  createFileTokenStore,
+  DEFAULT_MCP_AUTH_DIR,
+} from "./mcp/auth/token-store.js";
+
 // ─── Scratchpad spill (#47) ───
 export {
   setScratchpadBounded,

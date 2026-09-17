@@ -14,7 +14,11 @@ import type { TestTurn } from "@reactive-agents/llm-provider";
 import type { ReasoningOptions } from "./types.js";
 import type { ObservabilityOptions } from "./builder.js";
 import type { ContextProfile } from "@reactive-agents/reasoning";
-import type { ResultCompressionConfig } from "@reactive-agents/tools";
+import type {
+  ResultCompressionConfig,
+  MCPAuthConfig,
+  MCPTokenStore,
+} from "@reactive-agents/tools";
 import type { TelemetryConfig } from "@reactive-agents/observability";
 import type { KernelMetaToolsConfig } from "@reactive-agents/reasoning";
 
@@ -87,6 +91,24 @@ export interface MCPServerConfig {
    *
    */
   headers?: Record<string, string>;
+  /**
+   * OAuth configuration for connecting to a protected MCP server. See
+   * `@reactive-agents/tools`'s `MCPAuthConfig` for the discriminated-union
+   * shape (`client_credentials`, `private_key_jwt`, `authorization_code`,
+   * or a raw SDK `provider`).
+   *
+   * `clientSecret` / `privateKey` are config-caller-supplied strings — read
+   * them from your own env/secret-manager and pass the resolved value; no
+   * env-var interpolation syntax is supported here.
+   */
+  auth?: MCPAuthConfig;
+  /**
+   * Where OAuth credentials for this server are persisted across
+   * connections. Defaults to an in-memory store (per-process only) when
+   * `auth` is set without one; use `createFileTokenStore()` from
+   * `@reactive-agents/tools` for on-disk persistence.
+   */
+  tokenStore?: MCPTokenStore;
 }
 
 /**

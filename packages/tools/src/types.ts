@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import type { MCPAuthConfig, MCPTokenStore } from "./mcp/auth/types.js";
 
 // ─── Tool Definition ───
 
@@ -605,7 +606,20 @@ export const MCPServerSchema = Schema.Struct({
  *
  * @see {@link ToolService.connectMCPServer}
  */
-export type MCPServer = typeof MCPServerSchema.Type;
+export type MCPServer = typeof MCPServerSchema.Type & {
+  /**
+   * OAuth configuration for connecting to a protected server. Not part of
+   * {@link MCPServerSchema} — this is caller-supplied connection config
+   * (may hold callbacks or an `OAuthClientProvider` instance), not data
+   * decoded from an external source, so it is not schema-validated.
+   */
+  readonly auth?: MCPAuthConfig;
+  /**
+   * Where OAuth credentials for this server are persisted. Defaults to an
+   * in-memory store (per-process only) when `auth` is set without one.
+   */
+  readonly tokenStore?: MCPTokenStore;
+};
 
 /**
  * Schema for an MCP JSON-RPC 2.0 request.

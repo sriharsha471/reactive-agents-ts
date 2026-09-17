@@ -33,6 +33,9 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { MCPServer } from "../types.js";
 import { MCPConnectionError, ToolExecutionError } from "../errors.js";
+import { createAuthProvider } from "./auth/create-provider.js";
+import { createMemoryTokenStore } from "./auth/token-store.js";
+import type { MCPTokenStore } from "./auth/types.js";
 
 const mcpDebug = (...args: unknown[]): void => {
   if (process.env["RAX_DEBUG"]) console.log(...args);
@@ -41,9 +44,64 @@ const mcpDebug = (...args: unknown[]): void => {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type ConnectConfig = Omit<
-  Pick<MCPServer, "name" | "transport" | "endpoint" | "command" | "args" | "cwd" | "env" | "headers">,
+  Pick<
+    MCPServer,
+    | "name"
+    | "transport"
+    | "endpoint"
+    | "command"
+    | "args"
+    | "cwd"
+    | "env"
+    | "headers"
+    | "auth"
+    | "tokenStore"
+  >,
   "transport"
 > & { transport?: MCPServer["transport"] };
+
+/**
+ * Default OAuth token store when `config.auth` is set without an explicit
+ * `config.tokenStore` — per-process, in-memory only (matches `MCPServer.tokenStore`'s
+ * documented default). Shared across servers: {@link MCPTokenStore} keys are
+ * canonicalized per-resource-URL (see `canonicalResourceKey`), so two servers
+ * never collide on this shared instance.
+ */
+let defaultTokenStore: MCPTokenStore | undefined;
+function getDefaultTokenStore(): MCPTokenStore {
+  defaultTokenStore ??= createMemoryTokenStore();
+  return defaultTokenStore;
+}
+
+/**
+ * Config-time validation for `config.auth` — must run before any connection
+ * attempt (network fetch or subprocess spawn), per the plan's "ambiguous
+ * credential source" and "stdio gets credentials from the environment, not
+ * OAuth" requirements. Throws a plain `Error`; the caller (`connectInternal`
+ * via the `connect` Effect in `makeMCPClient`) wraps it into an
+ * `MCPConnectionError` like any other connect-time failure.
+ *
+ * Deliberately does not echo any secret value in its error messages.
+ */
+function validateAuthConfig(config: ConnectConfig): void {
+  if (!config.auth) return;
+
+  const transport = resolveTransport(config);
+  if (transport === "stdio") {
+    throw new Error(
+      `MCP server "${config.name}": "auth" is not supported for "stdio" transport — stdio servers get credentials from the environment (e.g. "env"), not OAuth.`,
+    );
+  }
+
+  const hasAuthorizationHeader = Object.keys(config.headers ?? {}).some(
+    (key) => key.toLowerCase() === "authorization",
+  );
+  if (hasAuthorizationHeader) {
+    throw new Error(
+      `MCP server "${config.name}": both "auth" and a "headers.Authorization" entry are set — ambiguous credential source. Use one or the other, not both.`,
+    );
+  }
+}
 
 interface ActiveConnection {
   client: Client;
@@ -360,6 +418,31 @@ function resolveTransport(config: ConnectConfig): MCPServer["transport"] {
   );
 }
 
+/**
+ * Builds a minimal `MCPServer`-shaped view of `config` for `createAuthProvider`
+ * (whose signature is `(server: MCPServer, store) => ...` per the plan). Only
+ * `name`/`transport`/`endpoint`/`auth` are actually read by `createAuthProvider`;
+ * the remaining `MCPServerSchema` fields are filled with connect-time-accurate
+ * placeholders (no tools discovered yet, not yet connected).
+ */
+function toMCPServerLike(config: ConnectConfig): MCPServer {
+  return {
+    name: config.name,
+    version: "unknown",
+    transport: resolveTransport(config),
+    endpoint: config.endpoint,
+    command: config.command,
+    args: config.args,
+    cwd: config.cwd,
+    env: config.env,
+    headers: config.headers,
+    tools: [],
+    status: "disconnected",
+    auth: config.auth,
+    tokenStore: config.tokenStore,
+  };
+}
+
 function createTransport(config: ConnectConfig, overrideArgs?: string[]): Transport {
   const headers = config.headers ?? {};
   const transport = resolveTransport(config);
@@ -381,13 +464,15 @@ function createTransport(config: ConnectConfig, overrideArgs?: string[]): Transp
       if (!config.endpoint) throw new Error(
         `MCP server "${config.name}" has transport "streamable-http" but no endpoint specified`,
       );
-      return new StreamableHTTPClientTransport(new URL(config.endpoint), { requestInit: { headers } });
+      const authProvider = createAuthProvider(toMCPServerLike(config), config.tokenStore ?? getDefaultTokenStore());
+      return new StreamableHTTPClientTransport(new URL(config.endpoint), { requestInit: { headers }, authProvider });
     }
     case "sse": {
       if (!config.endpoint) throw new Error(
         `MCP server "${config.name}" has transport "sse" but no endpoint specified`,
       );
-      return new SSEClientTransport(new URL(config.endpoint), { requestInit: { headers } });
+      const authProvider = createAuthProvider(toMCPServerLike(config), config.tokenStore ?? getDefaultTokenStore());
+      return new SSEClientTransport(new URL(config.endpoint), { requestInit: { headers }, authProvider });
     }
     case "websocket":
       throw new Error(
@@ -507,12 +592,20 @@ async function reconnectViaHttp(
     { type: "sse", url: sseUrl },
   ];
 
+  // Same provider construction as `createTransport`'s streamable-http/sse cases —
+  // this path (Docker/subprocess auto-upgrade from stdio to HTTP) currently can
+  // never carry `config.auth` in practice (`validateAuthConfig` rejects `auth` on
+  // any config that resolves to "stdio" transport, and reaching this function
+  // requires exactly that). Wired anyway for parity: if that stdio+auth
+  // restriction is ever relaxed, this path must not silently skip auth.
+  const authProvider = createAuthProvider(toMCPServerLike(config), config.tokenStore ?? getDefaultTokenStore());
+
   let lastError: unknown;
   for (const candidate of candidates) {
     const httpTransport: Transport =
       candidate.type === "streamable-http"
-        ? new StreamableHTTPClientTransport(new URL(candidate.url), { requestInit: { headers: config.headers ?? {} } })
-        : new SSEClientTransport(new URL(candidate.url), { requestInit: { headers: config.headers ?? {} } });
+        ? new StreamableHTTPClientTransport(new URL(candidate.url), { requestInit: { headers: config.headers ?? {} }, authProvider })
+        : new SSEClientTransport(new URL(candidate.url), { requestInit: { headers: config.headers ?? {} }, authProvider });
 
     const sdkClient = new Client({ name: "reactive-agents", version: "1.0.0" }, { capabilities: {} });
     try {
@@ -581,6 +674,7 @@ async function buildMCPServer(
 // ─── Core Connect ─────────────────────────────────────────────────────────────
 
 async function connectInternal(config: ConnectConfig): Promise<ActiveConnection> {
+  validateAuthConfig(config);
   const effectiveTransport = resolveTransport(config);
 
   // ── stdio path ──

@@ -504,10 +504,45 @@ export async function startOAuthMcpFixture(
     });
   }
 
-  async function handleClientCredentialsGrant(body: Record<string, string>): Promise<Response> {
-    const clientId = body["client_id"] ?? "";
+  /**
+   * client_secret_basic sends `Authorization: Basic base64(id:secret)`; parses it back
+   * into `{ clientId, clientSecret }`, or `undefined` if the header is absent/malformed.
+   */
+  function parseBasicAuth(req: Request): { clientId: string; clientSecret: string } | undefined {
+    const header = req.headers.get("authorization") ?? "";
+    const match = /^Basic\s+(.+)$/i.exec(header);
+    if (!match) return undefined;
+    let decoded: string;
+    try {
+      decoded = Buffer.from(match[1] ?? "", "base64").toString("utf8");
+    } catch {
+      return undefined;
+    }
+    const sep = decoded.indexOf(":");
+    if (sep === -1) return undefined;
+    return { clientId: decoded.slice(0, sep), clientSecret: decoded.slice(sep + 1) };
+  }
+
+  async function handleClientCredentialsGrant(
+    req: Request,
+    body: Record<string, string>,
+  ): Promise<Response> {
+    // client_secret_basic puts credentials in the Authorization header instead of the
+    // body; client_secret_post puts them in the body. Accept either, matching real
+    // authorization-server behavior (RFC 6749 §2.3.1).
+    const basic = parseBasicAuth(req);
+    const clientId = basic?.clientId ?? body["client_id"] ?? "";
+    const providedSecret = basic?.clientSecret ?? body["client_secret"];
     const scope = body["scope"] ?? "";
     const resource = body["resource"];
+
+    // Machine-to-machine grant: the client MUST be a registered, secret-holding client
+    // and MUST present the matching secret — this is the whole point of the grant.
+    // (Real-world equivalent: RFC 6749 §4.4 + §3.2.1 "MUST authenticate".)
+    const registered = clients.get(clientId);
+    if (!registered || registered.clientSecret === undefined || providedSecret !== registered.clientSecret) {
+      return jsonError(400, "invalid_client", "client authentication failed");
+    }
 
     const resourceError = validateResourceParam(resource);
     if (resourceError) return resourceError;
@@ -538,7 +573,7 @@ export async function startOAuthMcpFixture(
       case "refresh_token":
         return handleRefreshTokenGrant(body);
       case "client_credentials":
-        return handleClientCredentialsGrant(body);
+        return handleClientCredentialsGrant(req, body);
       default:
         return jsonError(400, "unsupported_grant_type", body["grant_type"] ?? "missing grant_type");
     }

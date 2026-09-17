@@ -160,7 +160,16 @@ export class ToolService extends Context.Tag("ToolService")<
     readonly connectMCPServer: (
       config: Pick<
         MCPServer,
-        "name" | "transport" | "endpoint" | "command" | "args" | "cwd" | "env" | "headers"
+        | "name"
+        | "transport"
+        | "endpoint"
+        | "command"
+        | "args"
+        | "cwd"
+        | "env"
+        | "headers"
+        | "auth"
+        | "tokenStore"
       >,
     ) => Effect.Effect<MCPServer, MCPConnectionError>;
 
@@ -453,7 +462,16 @@ export const ToolServiceLive = Layer.effect(
     const connectMCPServer = (
       config: Pick<
         MCPServer,
-        "name" | "transport" | "endpoint" | "command" | "args" | "cwd" | "env" | "headers"
+        | "name"
+        | "transport"
+        | "endpoint"
+        | "command"
+        | "args"
+        | "cwd"
+        | "env"
+        | "headers"
+        | "auth"
+        | "tokenStore"
       >,
     ): Effect.Effect<MCPServer, MCPConnectionError> =>
       Effect.gen(function* () {

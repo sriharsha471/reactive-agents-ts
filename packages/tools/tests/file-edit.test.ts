@@ -66,6 +66,15 @@ describe("file-edit replaces a region without rewriting the file", () => {
     expect(await readFile(file, "utf-8")).toBe("alpha\n");
   });
 
+  it("REFUSES when newText is undefined or not a string, without changing the file", async () => {
+    const { dir, file } = await seed("alpha\nbeta\n");
+    const r = await edit(dir, { path: file, oldText: "alpha", newText: undefined });
+    expect(r._tag).toBe("Left");
+    expect(String((r as { left: { message: string } }).left.message)).toContain("must be a string");
+    // The file must be left untouched.
+    expect(await readFile(file, "utf-8")).toBe("alpha\nbeta\n");
+  });
+
   it("REFUSES a harness-echoed error string as replacement text", async () => {
     const { dir, file } = await seed("alpha\n");
     const r = await edit(dir, {

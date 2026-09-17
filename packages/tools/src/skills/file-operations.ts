@@ -539,6 +539,12 @@ export const fileEditHandler = (
         );
       }
 
+      if (typeof newText !== "string") {
+        throw new Error(
+          "'newText' must be a string (use an empty string to delete the matched text).",
+        );
+      }
+
       // An echoed harness message is not content in this position either.
       const rejection = harnessEchoRejection(newText);
       if (rejection !== undefined) throw new Error(rejection);

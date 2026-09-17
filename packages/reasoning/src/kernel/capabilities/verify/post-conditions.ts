@@ -173,6 +173,7 @@ export const WRITING_TOOL_NAMES: ReadonlySet<string> = new Set([
   "write-file",
   "fs-write",
   "writefile",
+  "file-edit",
 ]);
 
 function isWritingTool(toolName: string | undefined): boolean {

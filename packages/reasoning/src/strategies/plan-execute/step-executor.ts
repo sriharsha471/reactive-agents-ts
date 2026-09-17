@@ -38,6 +38,7 @@ import { RunEnvelope } from "../../kernel/envelope/run-envelope.js";
 import type { CompletionEnvelope } from "../../kernel/state/completion-envelope.js";
 import type { StrategyServices } from "../../kernel/utils/service-utils.js";
 import { executeToolAndObserve } from "../../kernel/capabilities/act/tool-observe.js";
+import { FILE_TOOL_NAMES } from "../../kernel/capabilities/act/act.js";
 import type { KernelStateLike } from "@reactive-agents/core";
 import type { ReasoningStep } from "../../types/index.js";
 import { makeStep, reactResultPause } from "../../kernel/capabilities/sense/step-utils.js";
@@ -160,9 +161,6 @@ export interface StepExecutorInput {
    *  otherwise produces NO ledger). Surfaced on `result.metadata.runLedger`. */
   readonly ledgerSink?: Ref.Ref<RunLedger>;
 }
-
-/** File tools whose relative paths the healing pipeline resolves (mirrors act.ts). */
-const FILE_TOOL_NAMES = new Set(["file-read", "file-write", "code-execute", "shell-execute"]);
 
 /**
  * Execute a single plan step based on its type:

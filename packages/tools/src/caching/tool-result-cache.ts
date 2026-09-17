@@ -40,6 +40,10 @@ export interface ToolCacheStats {
 
 const DEFAULT_UNCACHEABLE = new Set([
   "file-write",
+  "write-file",
+  "fs-write",
+  "writefile",
+  "file-edit",
   "code-execute",
   "recall",
   "send-email",

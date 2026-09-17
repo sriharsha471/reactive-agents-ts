@@ -150,10 +150,11 @@ export type TelemetryAggregate = typeof TelemetryAggregateSchema.Type;
 export const SAFE_TOOL_NAMES = new Set([
   "file-read",
   "file-write",
-  "file-list",
+  "file-edit",
+  "list-directory",
   "web-search",
   "code-execute",
   "shell-execute",
-  "http-request",
+  "http-get",
   "memory-query",
 ]);

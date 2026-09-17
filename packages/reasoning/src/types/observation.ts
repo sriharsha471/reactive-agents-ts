@@ -96,6 +96,7 @@ export type ObservationResult = typeof ObservationResultSchema.Type;
 
 const TOOL_CATEGORY_MAP: Record<string, ObservationCategory> = {
   "file-write": "file-write",
+  "file-edit": "file-write",
   "file-read": "file-read",
   "web-search": "web-search",
   "http-get": "http-get",

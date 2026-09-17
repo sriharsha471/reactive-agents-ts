@@ -1,5 +1,4 @@
-import { ReactiveAgents } from "@reactive-agents/runtime";
-import { secureServe } from "@reactive-agents/runtime-shim";
+import { ReactiveAgents, type ReactiveAgent } from "@reactive-agents/runtime";
 import { banner, kv, success, fail, info, muted, box } from "../ui.js";
 
 const VALID_PROVIDERS = ["anthropic", "openai", "ollama", "gemini", "litellm", "test"] as const;
@@ -103,16 +102,33 @@ export function runServe(argv: string[]) {
   if (withReasoning) builder = builder.withReasoning();
   if (enableMemory) builder = memoryEnhanced ? builder.withMemory({ tier: "enhanced" }) : builder.withMemory();
 
-  // Build the agent and start HTTP server
+  // Build the agent and start the A2A server
   startServer(builder.build(), name, port);
 }
 
+/**
+ * Reads a CLI-facing env var, falling back to its deprecated predecessor with
+ * a one-line stderr warning. `RA_SERVE_*` was the CLI's own ad-hoc naming from
+ * when it hand-rolled its server; `RA_A2A_*` (read directly by
+ * `agent.serveA2A()` / `packages/a2a`'s HTTP server) is now canonical since it
+ * names the protocol, not the command. Kept as a fallback, not dropped,
+ * because these are user-facing env vars that existing deployments may set.
+ */
+function readEnvWithDeprecatedFallback(canonical: string, deprecated: string): string | undefined {
+  if (process.env[canonical] !== undefined) return process.env[canonical];
+  if (process.env[deprecated] !== undefined) {
+    console.error(fail(`${deprecated} is deprecated; use ${canonical} instead.`));
+    return process.env[deprecated];
+  }
+  return undefined;
+}
+
 async function startServer(
-  agentPromise: Promise<InstanceType<typeof Object>>,
+  agentPromise: Promise<ReactiveAgent>,
   name: string,
   port: number,
 ) {
-  let agent: any;
+  let agent: ReactiveAgent;
   try {
     agent = await agentPromise;
   } catch (err) {
@@ -120,160 +136,30 @@ async function startServer(
     process.exit(1);
   }
 
-  // Lazy import to avoid top-level module resolution failures in tests
-  const { generateAgentCard } = await import("@reactive-agents/a2a");
+  const hostname = readEnvWithDeprecatedFallback("RA_A2A_HOST", "RA_SERVE_HOST");
+  const token = readEnvWithDeprecatedFallback("RA_A2A_TOKEN", "RA_SERVE_TOKEN");
 
-  // Generate the agent card for discovery
-  const agentCard = generateAgentCard({
-    name,
-    description: `A2A agent: ${name}`,
-    url: `http://localhost:${port}`,
-  });
-
-  // Task store for tracking in-flight tasks
-  const tasks = new Map<string, { id: string; status: { state: string; message?: string; timestamp: string }; result?: unknown }>();
-
-  // Secure-by-default ingress (F4): binds loopback unless RA_SERVE_HOST is set,
-  // and refuses a non-loopback bind without RA_SERVE_TOKEN. With --with-tools a
-  // remote caller would otherwise reach host tools and drain the operator key.
-  const server = await secureServe({
+  const handle = await agent.serveA2A({
     port,
-    hostname: process.env.RA_SERVE_HOST,
-    token: process.env.RA_SERVE_TOKEN,
-    async fetch(req) {
-      const url = new URL(req.url);
-
-      // GET /.well-known/agent.json — A2A Agent Card discovery
-      if (req.method === "GET" && (url.pathname === "/.well-known/agent.json" || url.pathname === "/agent/card")) {
-        return Response.json(agentCard);
-      }
-
-      // POST / — JSON-RPC handler
-      if (req.method === "POST" && url.pathname === "/") {
-        let body: any;
-        try {
-          body = await req.json();
-        } catch {
-          return Response.json({
-            jsonrpc: "2.0",
-            error: { code: -32700, message: "Parse error" },
-            id: null,
-          });
-        }
-
-        const { method, params, id } = body;
-
-        switch (method) {
-          case "agent/card": {
-            return Response.json({ jsonrpc: "2.0", result: agentCard, id });
-          }
-
-          case "message/send": {
-            const taskId = crypto.randomUUID();
-            const message = params?.message;
-            const textPart = message?.parts?.find((p: any) => p.kind === "text");
-            const input = textPart?.text ?? JSON.stringify(params);
-
-            tasks.set(taskId, {
-              id: taskId,
-              status: { state: "working", timestamp: new Date().toISOString() },
-            });
-
-            // Run the agent asynchronously, update task on completion
-            agent.run(input).then(
-              (result: any) => {
-                tasks.set(taskId, {
-                  id: taskId,
-                  status: { state: "completed", timestamp: new Date().toISOString() },
-                  result: result.output ?? result,
-                });
-              },
-              (err: any) => {
-                tasks.set(taskId, {
-                  id: taskId,
-                  status: {
-                    state: "failed",
-                    message: err?.message ?? String(err),
-                    timestamp: new Date().toISOString(),
-                  },
-                });
-              },
-            );
-
-            return Response.json({
-              jsonrpc: "2.0",
-              result: { taskId },
-              id,
-            });
-          }
-
-          case "tasks/get": {
-            const taskId = params?.id;
-            const task = tasks.get(taskId);
-            if (!task) {
-              return Response.json({
-                jsonrpc: "2.0",
-                error: { code: -32000, message: `Task not found: ${taskId}` },
-                id,
-              });
-            }
-            return Response.json({ jsonrpc: "2.0", result: task, id });
-          }
-
-          case "tasks/cancel": {
-            const taskId = params?.id;
-            const task = tasks.get(taskId);
-            if (!task) {
-              return Response.json({
-                jsonrpc: "2.0",
-                error: { code: -32000, message: `Task not found: ${taskId}` },
-                id,
-              });
-            }
-            if (["completed", "failed", "canceled"].includes(task.status.state)) {
-              return Response.json({
-                jsonrpc: "2.0",
-                error: { code: -32001, message: `Cannot cancel task in state: ${task.status.state}` },
-                id,
-              });
-            }
-            task.status = { state: "canceled", message: "Canceled by user", timestamp: new Date().toISOString() };
-            try {
-              await agent.cancel(taskId);
-            } catch {
-              // Best-effort cancel
-            }
-            return Response.json({ jsonrpc: "2.0", result: task, id });
-          }
-
-          default:
-            return Response.json({
-              jsonrpc: "2.0",
-              error: { code: -32601, message: `Method not found: ${method}` },
-              id,
-            });
-        }
-      }
-
-      return new Response("Not Found", { status: 404 });
-    },
+    description: `A2A agent: ${name}`,
+    hostname,
+    token,
   });
 
+  const boundHost = hostname ?? "127.0.0.1";
   console.log("");
-  console.log(success(`A2A server ready on port ${port}`));
-  console.log(kv("Agent Card", `http://localhost:${port}/.well-known/agent.json`));
-  console.log(kv("JSON-RPC", `http://localhost:${port}/`));
+  console.log(success(`A2A server ready on port ${handle.port}`));
+  console.log(kv("Agent Card", `http://${boundHost}:${handle.port}/.well-known/agent.json`));
+  console.log(kv("JSON-RPC", `http://${boundHost}:${handle.port}/`));
   console.log(muted("\nUse Ctrl+C to stop"));
 
   // Keep the process alive
   process.on("SIGINT", () => {
     console.log(info("Shutting down A2A server..."));
-    server.stop(true);
-    process.exit(0);
+    handle.stop().then(() => process.exit(0));
   });
 
   process.on("SIGTERM", () => {
-    server.stop(true);
-    process.exit(0);
+    handle.stop().then(() => process.exit(0));
   });
 }

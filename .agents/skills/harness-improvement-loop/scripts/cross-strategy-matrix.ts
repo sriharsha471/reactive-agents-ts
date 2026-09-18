@@ -210,7 +210,7 @@ async function main(): Promise<void> {
     }
   }
 
-  const ts = new Date().toISOString().slice(0, 16).replace("T", "-");
+  const ts = new Date().toISOString().slice(0, 16).replace("T", "-").replace(/:/g, "-");
   const jsonPath = resolve(reportsDir, `cross-strategy-matrix-${ts}.json`);
   const csvPath = resolve(reportsDir, `cross-strategy-matrix-${ts}.csv`);
   writeFileSync(jsonPath, JSON.stringify(cells, null, 2));

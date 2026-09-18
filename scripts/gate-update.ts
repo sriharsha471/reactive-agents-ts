@@ -13,6 +13,8 @@
 //   bun run gate:update --reason "<reason>"    # non-interactive
 
 import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   runGate,
   writeBaseline,
@@ -88,13 +90,14 @@ const updatedHealth = {
 };
 writeHealth(updatedHealth);
 
-// Stash the reason in a file the commit-message lint reads.
-writeFileSync(".gate-baseline-reason", reason + "\n", "utf-8");
+// Stash the reason in /tmp (not repo root).
+const reasonFile = join(tmpdir(), ".gate-baseline-reason");
+writeFileSync(reasonFile, reason + "\n", "utf-8");
 
 console.log(``);
 console.log(`✓ Wrote ${BASELINE_PATH}`);
 console.log(`✓ Wrote ${HEALTH_PATH}`);
-console.log(`✓ Reason stashed in .gate-baseline-reason`);
+console.log(`✓ Reason written to ${reasonFile}`);
 console.log(``);
 console.log(`Commit using:`);
 console.log(`  git commit -m "<your subject>" -m "BASELINE-UPDATE: ${reason}"`);

@@ -49,7 +49,7 @@ describe("replay rail — record a harness run, replay it deterministically", ()
         { match: "note\\.md", toolCall: { name: "file-write", args: { path: "./note.md", content: "hello from the harness" } } },
         { text: "FINAL ANSWER: wrote the note and it is done." },
       ])
-      .withTools({ builtins: ["file-write"] })
+      .withTools({ builtins: ["file-write"], fileRoot: REPLAY_ROOT })
       // Static required list: suppresses the tool-relevance classifier (whose
       // prompt embeds the task text and would consume the match-guarded
       // toolCall turn — the scenario would then never reach the kernel) and

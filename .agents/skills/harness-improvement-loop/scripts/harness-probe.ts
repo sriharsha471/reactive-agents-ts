@@ -192,7 +192,7 @@ async function main() {
     results.push(result);
   }
 
-  const summaryPath = `wiki/Research/Harness-Reports/probe-summary-${new Date().toISOString().slice(0, 16).replace("T", "-")}.json`;
+  const summaryPath = `wiki/Research/Harness-Reports/probe-summary-${new Date().toISOString().slice(0, 16).replace("T", "-").replace(/:/g, "-")}.json`;
   writeFileSync(summaryPath, JSON.stringify(results, null, 2));
 
   console.log("\n✅ All probes complete.");

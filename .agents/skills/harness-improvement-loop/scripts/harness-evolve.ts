@@ -520,7 +520,7 @@ function main() {
   const analyses: ProbeAnalysis[] = jsonlFiles.map((f) => analyzeProbeJsonl(f));
 
   // Evaluate pass criteria for each probe
-  const passId = new Date().toISOString().slice(0, 16).replace("T", "-");
+  const passId = new Date().toISOString().slice(0, 16).replace("T", "-").replace(/:/g, "-");
   const probeResults: Array<{
     analysis: ProbeAnalysis;
     evaluations: ReturnType<typeof evaluatePassCriteria>;
@@ -689,7 +689,7 @@ function main() {
   // ── Write next-pass probe candidates ─────────────────────────────────────
   const candidatePath = join(
     REPORT_DIR,
-    `probe-candidates-${new Date().toISOString().slice(0, 16).replace("T", "-")}.ts`,
+    `probe-candidates-${new Date().toISOString().slice(0, 16).replace("T", "-").replace(/:/g, "-")}.ts`,
   );
 
   if (!DRY_RUN && nextPassProbes.length > 0) {

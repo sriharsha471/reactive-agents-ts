@@ -199,7 +199,7 @@ async function main(): Promise<void> {
     }
   }
 
-  const ts = new Date().toISOString().slice(0, 16).replace("T", "-");
+  const ts = new Date().toISOString().slice(0, 16).replace("T", "-").replace(/:/g, "-");
   const jsonPath = resolve(reportsDir, `ri-ablation-${ts}.json`);
   writeFileSync(jsonPath, JSON.stringify(cells, null, 2));
 

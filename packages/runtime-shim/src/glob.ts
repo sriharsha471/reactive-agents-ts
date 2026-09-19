@@ -2,7 +2,10 @@ import { createRequire } from "node:module";
 import { isBun } from "./detect.js";
 import type { GlobLike } from "./types.js";
 
-const require = createRequire(import.meta.url);
+let _require: NodeJS.Require | undefined;
+function nodeRequire(): NodeJS.Require {
+  return (_require ??= createRequire(import.meta.url));
+}
 
 interface BunGlobApi {
   Glob: new (pattern: string) => {
@@ -24,7 +27,7 @@ function globNode(pattern: string): GlobLike {
   return {
     scan: async function* (opts?: { cwd?: string; onlyFiles?: boolean }): AsyncIterable<string> {
       try {
-        const fsp = require("node:fs/promises") as typeof import("node:fs/promises");
+        const fsp = nodeRequire()("node:fs/promises") as typeof import("node:fs/promises");
         // node:fs.glob — available Node 22+
         const nodeGlob = (fsp as unknown as { glob?: (pat: string, opts?: { cwd?: string }) => AsyncIterable<string> })
           .glob;
@@ -39,7 +42,7 @@ function globNode(pattern: string): GlobLike {
       }
 
       // Fallback: simple readdir for *.ext or basename patterns
-      const fsp = require("node:fs/promises") as typeof import("node:fs/promises");
+      const fsp = nodeRequire()("node:fs/promises") as typeof import("node:fs/promises");
       const cwd = opts?.cwd ?? ".";
       const entries = await fsp.readdir(cwd);
       const isExtPattern = pattern.startsWith("*.");

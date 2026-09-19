@@ -1,7 +1,10 @@
 import { createRequire } from "node:module";
 import { isBun } from "./detect.js";
 
-const require = createRequire(import.meta.url);
+let _require: NodeJS.Require | undefined;
+function nodeRequire(): NodeJS.Require {
+  return (_require ??= createRequire(import.meta.url));
+}
 
 interface BunHashApi {
   hash(input: string | Uint8Array): bigint;
@@ -22,7 +25,7 @@ export function hash(input: string | Uint8Array): bigint {
     return Bun.hash(input);
   }
 
-  const { createHash } = require("node:crypto") as typeof import("node:crypto");
+  const { createHash } = nodeRequire()("node:crypto") as typeof import("node:crypto");
   const buf = createHash("sha256")
     .update(typeof input === "string" ? input : Buffer.from(input))
     .digest();

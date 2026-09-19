@@ -2,7 +2,10 @@ import { createRequire } from "node:module";
 import { isBun } from "./detect.js";
 import type { ServeOptions, ServerLike } from "./types.js";
 
-const require = createRequire(import.meta.url);
+let _require: NodeJS.Require | undefined;
+function nodeRequire(): NodeJS.Require {
+  return (_require ??= createRequire(import.meta.url));
+}
 
 interface BunServeApi {
   serve(opts: ServeOptions): {
@@ -30,7 +33,7 @@ function serveBun(options: ServeOptions): ServerLike {
 }
 
 function serveNode(options: ServeOptions): Promise<ServerLike> {
-  const { createServer } = require("node:http") as typeof import("node:http");
+  const { createServer } = nodeRequire()("node:http") as typeof import("node:http");
 
   const server = createServer(async (req, res) => {
     try {

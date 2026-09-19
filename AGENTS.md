@@ -536,9 +536,11 @@ grep -r "workspace:" apps/stackblitz/ && echo FAIL || echo PASS
 
 ## Release Workflow (Tag-Driven)
 
+**`dev` is the staging branch (added 2026-09-19).** Land work on `dev`, not directly on `main`. `main` only moves via merging `dev` in at release time, immediately followed by the tag. This exists because `main` had silently diverged from `origin/main` (local-only commits never reaching origin) — `dev` gives in-progress work a durable, pushed home before it's release-ready. Feature branches still merge into `dev`, not `main`.
+
 **Every PR touching user-facing behavior:** `bun run changeset` → creates `.changeset/<name>.md` → commit with code. Changeset `.md` files feed release notes only — `scripts/release.ts` reads them at tag time.
 
-**Release cycle:** `bun run release:dry <version>` (sole drift gate — changesets/check:versions removed May 2026) → `git tag vX.Y.Z` → push tag → `publish.yml` builds, verifies, and publishes to npm. **Never `npm publish` manually.** See the `prepare-release` skill.
+**Release cycle:** merge `dev` → `main` → `bun run release:dry <version>` (sole drift gate — changesets/check:versions removed May 2026) → `git tag vX.Y.Z` → push tag → `publish.yml` builds, verifies, and publishes to npm. **Never `npm publish` manually.** See the `prepare-release` skill.
 
 **Bump types:** `patch` (fixes), `minor` (features), `major` (breaking)
 

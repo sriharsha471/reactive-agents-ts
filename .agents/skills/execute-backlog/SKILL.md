@@ -163,6 +163,8 @@ Issues: #N, #N, #N
 - <thing> — punt to next bundle
 ```
 
+**Root-cause direction check (added 2026-09-19).** When an issue proposes a root-cause hypothesis without having confirmed it end-to-end (e.g. "the suspect is X, needs a bisect"), grep the *consumer* of the broken value first — where it's read, aggregated, or reported — before chasing the *producer* the issue suspects. Metric/reporting bugs (a count computed via a fallback derivation, a field silently defaulting) commonly masquerade as behavior regressions in the producer's domain. (Reason: 2026-09-19 #207 spawn — issue suspected an entropy-scoring commit changed kernel termination behavior. The actual bug was in the gate runner's `iterations` metric, which had no real source field and fell back to counting `entropy-scored` trace events — a duplicate-event bug in the suspected commit inflated that count, but the kernel's actual iteration behavior never changed. Bisect correctly found the commit; several minutes were then spent reading kernel/entropy producer code before checking the metric's consumer, which held the answer immediately.)
+
 **Plan gates:**
 - If total estimated effort > `budget_minutes` → descope to fit; do NOT skip verification
 - If any unit depends on infra not in the repo → mark `blocked` on that issue, drop from bundle

@@ -10,6 +10,12 @@ updated: 2026-09-19
 
 ---
 
+## 2026-09-19 — surface-high-leverage-work skill + kernel-termination-regression bundle (PR #209)
+
+New `surface-high-leverage-work` skill shipped (`.claude/skills/surface-high-leverage-work/`) — DISCOVER→SCAN→GROUND→SCORE→DEDUPE→FILE→BATCH→PRESENT loop, chains `codebase-health-sweep`/`architecture-audit` for fresh code discovery rather than only re-ranking trackers. 4 sweeps run same day; canonical record at `wiki/Planning/Recommended-Enhancements.md`. Filed #205 (Cloudflare Workers `createRequire` crash), #206 (no abstention synthesis on budget exhaustion — descoped from execution, needs its own design pass), #207 (North Star gate 14-scenario "regression").
+
+`execute-backlog` ran on #207: bisected to `d43de304`, found it was a **stale baseline, not a kernel bug** — the gate's `iterations` metric falls back to counting `entropy-scored` trace events (`packages/testing/src/gate/runner.ts:65-74`); a prior double-scoring bug had inflated that count, and `d43de304` correctly fixed the double-scoring. Regenerated the baseline instead of touching kernel code. PR #209 (against `dev`), retro + `execute-backlog` self-amendment (root-cause-direction check) landed alongside.
+
 ## 2026-09-19 — `dev` staging branch introduced; local `main` divergence fixed
 
 Local `main` had silently diverged from `origin/main` (80 local-only commits

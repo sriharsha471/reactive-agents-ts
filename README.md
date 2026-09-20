@@ -840,6 +840,17 @@ const agent2 = await ReactiveAgents.create()
 
 MCP tools appear in the tool registry alongside custom tools; the LLM sees them all uniformly. Mix MCP servers with `ToolBuilder` custom tools in the same agent. See [full MCP docs](https://docs.reactiveagents.dev/guides/tools/).
 
+Skip the config for servers on [Docker Hub's `mcp/*` catalog](https://hub.docker.com/mcp) — pass the name instead:
+
+```typescript
+const agent = await ReactiveAgents.create()
+    .withProvider('anthropic')
+    .withMCP('brave-search', { env: { BRAVE_API_KEY: process.env.BRAVE_API_KEY! } })
+    .build()
+```
+
+The first use of an unapproved image throws `MCPApprovalRequiredError` rather than running it silently — approve it once with `approveMcpImage()` from `@reactive-agents/tools`, or pass `requireApproval: false` for a registry you've already vetted (e.g. CI).
+
 ## Testing
 
 Built-in test scenario support for deterministic, offline tests:

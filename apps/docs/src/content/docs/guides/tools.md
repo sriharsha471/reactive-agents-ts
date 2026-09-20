@@ -528,6 +528,46 @@ Set `cwd` to control where the subprocess starts. Useful when the MCP server rea
 `-e KEY=value` in `args` injects into the container. The `env` field sets env vars on the host `docker` process itself — useful if the Docker CLI needs credentials (e.g. `DOCKER_AUTH_CONFIG`), not the container.
 :::
 
+#### Registry-resolved servers (Docker Hub, with more registries planned)
+
+Instead of hand-writing the `docker run` config above, pass a catalog name as a plain string. `.withMCP()` resolves it through a pluggable `MCPRegistry` — [Docker Hub's `mcp/*` catalog](https://hub.docker.com/mcp) (200+ verified server images) is the first registry, chosen via the `registry` option (defaults to `"docker-hub"`), so additional registries (an npm/npx-based catalog, a private org registry) can plug into the same `.withMCP()` call later without an API change. Image, transport, and args are resolved for you:
+
+```typescript
+const agent = await ReactiveAgents.create()
+  .withProvider("anthropic")
+  .withReasoning()
+  .withMCP("filesystem")                                    // single catalog name
+  .withMCP("brave-search", { env: { BRAVE_API_KEY: process.env.BRAVE_API_KEY! } })
+  .build();
+```
+
+A `string[]` batches multiple catalog names with no per-entry options — `.withMCP(["filesystem", "brave-search"])`.
+
+A bare `string` and an `MCPServerConfig` object are unambiguous at the type level (a string can never be a config object), so both forms compose freely — chain `.withMCP()` as many times as you need. One call cannot mix a string with an object in the same array (`.withMCP(["name", { name: "x", command: "echo" }])` is rejected, both by the TypeScript overloads and at runtime) — call `.withMCP()` once per input shape instead.
+
+`options` on the single-name form:
+
+| Option | Type | Purpose |
+|---|---|---|
+| `registry` | `string` | Registry id to resolve against. Defaults to `"docker-hub"`. |
+| `env` | `Record<string, string>` | Env vars the resolver validates against the catalog entry's declared requirements — throws if a required one is missing. |
+| `volumes` | `{ host, container, readOnly? }[]` | Dynamic bind mounts for servers that need host filesystem access (e.g. `filesystem`, `git`). |
+| `requireApproval` | `boolean` | Whether the approval gate below applies to this call. Defaults to `true`. |
+
+:::caution[Approval gate — on by default]
+Docker Hub's `mcp/*` namespace is build-signed but **not vetted for safety** — anyone can publish an image under that prefix. The first resolve of an image you haven't approved throws `MCPApprovalRequiredError` (naming the image and its digest) instead of silently pulling and running it. Approve it once, out of band, with the plain-`Promise` helper (no `effect` import required):
+
+```typescript
+import { approveMcpImage } from "@reactive-agents/tools";
+
+await approveMcpImage("docker-hub", "mcp/brave-search", "mcp/brave-search");
+```
+
+For environments where you've already vetted the registry out-of-band (CI, an internal mirror), pass `requireApproval: false` per call instead — this is an explicit trust decision you make each time, not a stored setting, and it never auto-records an approval.
+
+The current MVP limitation: Docker Hub's repository API doesn't expose a real image digest, so the "digest" used for approval keying is the image name itself — this proves "you approved this name before," not "the image hasn't changed since." Real digest pinning (via the image manifest) is planned but not yet wired in.
+:::
+
 ### Streamable HTTP Transport
 
 The standard transport for modern remote and cloud-hosted MCP servers (MCP spec 2025-03-26). Uses a single POST endpoint — the server responds with either a plain JSON object or an SSE stream depending on the operation.

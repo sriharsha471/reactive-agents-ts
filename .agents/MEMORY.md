@@ -15,6 +15,31 @@
 
 ## Projects — Sep 2026
 
+**2026-09-19/20: MCP toolkit scaffolding (`.withMCP()` string-form, uncommitted on `dev`).**
+`.withMCP()` gains overloads: bare `string`/`string[]` (or `(name, options)`) resolves a public catalog
+entry (Docker Hub's `mcp/*` namespace first) into a connect-ready config at `.build()` time — no
+hand-written `command`/`args`. New: `packages/tools/src/mcp/registry/**` (`MCPRegistry` interface,
+`DockerHubMCPRegistry`, digest-keyed local approval gate at `~/.reactive-agents/mcp-approvals`,
+Effect-free `approveMcpImage`/`isMcpImageApproved` convenience API). `MCPServer.defaultRiskLevel` +
+`ToolService.connectMCPServer` (`tool-service.ts:509-559`) now tag registry-sourced tools' risk tier
+instead of a flat hardcoded `"medium"`. Gate is `requireApproval` (default `true`) — an unapproved
+image throws `MCPApprovalRequiredError` naming image+digest rather than silently pulling untrusted
+code; `requireApproval: false` is an explicit per-call bypass, never a stored/default setting.
+Two design iterations were rejected before landing on the type-level discriminator (string vs object,
+zero ambiguity) — a separate `.withMcpToolkit()` method (required a `WITHER_CEILING` 85→86 bump) and a
+structural-shape guard folded into `.withMCP()` (rejected: `{name, env}` is genuinely ambiguous between
+a toolkit request and an incomplete hand-written config) were both tried and reverted; ceiling stays 85.
+A single `.withMCP()` call cannot mix `string` and `MCPServerConfig` in one array — call it once per
+input shape (documented via a dedicated `@deprecated`/`never`-returning overload so IDEs flag it, not
+just a runtime throw). MVP limitation, documented not hidden: Docker Hub's API has no real image digest,
+so approval keying uses the image name as a placeholder — proves "approved this name before," not
+"unchanged since." Not yet built: `rax mcp approve` CLI verb (approval store/functions exist and are
+ready for it). Design spec: `wiki/Architecture/Design-Specs/2026-09-19-mcp-toolkit-scaffolding.md`
+(includes the "Final decision" section recording both rejected API shapes). Public docs updated:
+`README.md` MCP section, `apps/docs/.../guides/tools.md` ("Docker Hub MCP catalog" subsection),
+`apps/docs/.../cookbook/agent-tool-calling-mcp.md`. All gates green except the known pre-existing
+`as-unknown-as` ceiling gap (79 vs 78, unrelated, confirmed via repeated full-suite runs this session).
+
 **2026-09-15: Wire-or-delete hardening wave (`96f10a22..84d43fcf`, 9 tasks, branch `wave/wire-or-delete-2026-09`, not yet merged/tagged).**
 Doc truth pass (Task 0); provider env config made lazy + a real
 **keyless-refusal security fix** — compat LLM clients previously could

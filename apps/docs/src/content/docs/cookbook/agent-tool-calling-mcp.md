@@ -158,6 +158,20 @@ const agent = await ReactiveAgents.create()
 
 You can pass an **array** to `.withMCP([...])`, or chain `.withMCP()` multiple times, to connect several servers at once — and combine them with `ToolBuilder` custom tools in the same agent. The model sees every tool uniformly and picks whichever it needs.
 
+### Skip the config — resolve a server by name
+
+For servers published to [Docker Hub's `mcp/*` catalog](https://hub.docker.com/mcp), skip the `command`/`args` entirely and pass the catalog name as a string:
+
+```typescript
+const agent = await ReactiveAgents.create()
+  .withProvider("anthropic")
+  .withReasoning()
+  .withMCP("brave-search", { env: { BRAVE_API_KEY: process.env.BRAVE_API_KEY! } })
+  .build();
+```
+
+The first use of an unapproved image throws `MCPApprovalRequiredError` rather than silently running it — approve it once with `approveMcpImage()`, or pass `requireApproval: false` for environments you've already vetted. Full option reference (`env`, `volumes`, `registry`, `requireApproval`) and the approval flow are in the [Tools guide's Docker Hub MCP catalog section](/guides/tools/#registry-resolved-servers-docker-hub-with-more-registries-planned).
+
 ### streamable-http with OAuth 2.1
 
 `headers` above works for a pre-obtained token you manage yourself. If the server speaks OAuth 2.1 and

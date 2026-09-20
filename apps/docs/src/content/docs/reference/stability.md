@@ -63,6 +63,7 @@ Use at your own risk. Will change.
 - **Sub-agent delegation API** — the delegation surface (`.withAgentTool()`, `.withRemoteAgent()`, `.withDynamicSubAgents()`) is functional but its shape is still under iteration
 - **Reactive observer / entropy scoring tunables** — thresholds, scoring functions
 - **Living Skills runtime in Cortex** — UI and persistence schema not finalized
+- **MCP registry resolution** — `.withMCP("name")` / `.withMCP(["a","b"])` / `.withMCP("name", options)` resolving a public catalog entry (Docker Hub's `mcp/*` namespace is the first supported registry, chosen via the `registry` option) into a connect-ready server. The digest used by the approval gate is a placeholder (the image name, not a real content digest) until real digest pinning lands; `MCPRegistry` as a pluggable interface is settled, but the registry-id lookup mechanism and additional registries beyond Docker Hub may change shape.
 
 ## Deprecation policy
 

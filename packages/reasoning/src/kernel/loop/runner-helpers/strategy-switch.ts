@@ -32,6 +32,8 @@ import { Effect } from "effect";
 import { makeStep } from "../../../kernel/capabilities/sense/step-utils.js";
 import { authorityOf } from "../../../kernel/capabilities/decide/authority.js";
 import { buildHandoff } from "../../../kernel/capabilities/reflect/strategy-evaluator.js";
+import { recordHandoff } from "../../../kernel/ledger/emit.js";
+import type { RunLedger } from "../../../kernel/ledger/run-ledger.js";
 import {
   initialKernelState,
   transitionState,
@@ -41,6 +43,27 @@ import {
   type KernelRunOptions,
   type KernelHooks,
 } from "../../../kernel/state/kernel-state.js";
+
+/**
+ * Drop a later `tool-result` entry that duplicates an earlier one's `stepId`
+ * (the ledger dual-emit chokepoint re-projects ANY `steps` growth, so carrying
+ * an observation already recorded in `priorState.ledger` forward as a `steps`
+ * patch would otherwise mint a SECOND fact for the same call), then
+ * re-densify `seq` so it stays the ledger's dense, monotonic, append-assigned
+ * index (DAG law, run-ledger.ts). Pure — returns a NEW ledger; not an
+ * `appendEntry` call, so `check-ledger-writes.sh`'s single-writer boundary is
+ * untouched.
+ */
+function dedupeCarriedToolResults(ledger: RunLedger): RunLedger {
+  const seenStepIds = new Set<string>();
+  const kept = ledger.filter((e) => {
+    if (e.kind !== "tool-result" || e.stepId === undefined) return true;
+    if (seenStepIds.has(e.stepId)) return false;
+    seenStepIds.add(e.stepId);
+    return true;
+  });
+  return kept.map((e, seq) => ({ ...e, seq }));
+}
 
 /** Per-loop counters that a strategy switch resets to zero. */
 export interface SwitchResetCounters {
@@ -158,6 +181,21 @@ export function applyStrategySwitch(
     let state = initialKernelState(currentOptions);
     state = transitionState(state, { iteration: priorState.iteration });
 
+    // Carry the run's ledger across the switch (Step 1 characterization test:
+    // `initialKernelState`'s `ledger: []` DROPS the prior ledger — tool
+    // invocations, artifacts, requirement facts would silently vanish and
+    // `assess()` would re-list satisfied requirements as outstanding after
+    // every switch). Then record the handoff as a typed fact instead of
+    // string-folding it into `priorContext` (audit 03-F5 — the typed carrier
+    // existed, was rendered by the standing frame, and had zero writers).
+    state = transitionState(state, {
+      ledger: recordHandoff(
+        priorState.ledger,
+        { from: fromStrategy, to: toStrategy, summary: handoffSummary },
+        priorState.iteration,
+      ),
+    });
+
     // P4 (2026-07-07, A2 #3): carry successful tool observations AND the
     // toolsUsed ledger across the switch. Without them the new strategy both
     // lacks the data (only 5 compressed keyObservations lines survive in
@@ -176,6 +214,13 @@ export function applyStrategySwitch(
         steps: [...state.steps, ...carriedObservations],
         toolsUsed: new Set(priorState.toolsUsed),
       });
+      // The ledger dual-emit chokepoint (`transitionState`) re-projects ANY
+      // `steps` growth, including a fresh `tool-result` per carried
+      // observation — but `priorState.ledger` (carried above) already holds
+      // the ORIGINAL `tool-result` for these same steps. Left alone, carrying
+      // observations across a switch would double the fact for every call.
+      // De-dupe by `stepId` (keep the earlier entry) and re-densify `seq`.
+      state = transitionState(state, { ledger: dedupeCarriedToolResults(state.ledger ?? []) });
     }
 
     // Inject synthetic failure observations so the new strategy immediately
@@ -229,17 +274,15 @@ export function applyStrategySwitch(
       ],
     });
 
-    // Build updated input with handoff context. Also drop permanently-failed
-    // tools from requiredTools — the lane controller uses this list to decide
-    // whether to nudge, and nudging for a known-broken tool only causes retry loops.
-    const existingPrior = priorInput.priorContext
-      ? `${priorInput.priorContext}\n\n${handoffSummary}`
-      : handoffSummary;
-
+    // Build updated input. The handoff is now a typed ledger fact (recorded
+    // above) that the standing frame renders directly — `priorContext` is left
+    // untouched instead of string-folding the handoff into it (two carriers for
+    // one concept; the typed one wins). Also drop permanently-failed tools from
+    // requiredTools — the lane controller uses this list to decide whether to
+    // nudge, and nudging for a known-broken tool only causes retry loops.
     const failedSet = new Set(handoff.permanentlyFailedTools);
     const currentInput: KernelInput = {
       ...priorInput,
-      priorContext: existingPrior,
       requiredTools: failedSet.size > 0
         ? (priorInput.requiredTools ?? []).filter((t) => !failedSet.has(t))
         : priorInput.requiredTools,

@@ -69,6 +69,7 @@ For each candidate, parse:
 2. Drop `phase:` mismatches if `phase:` filter was provided
 3. Drop issues with the `blocked` label
 4. Drop issues assigned to someone else
+5. **Stale-premise check (added 2026-09-19).** If the issue body names a specific class/module/mechanism as the integration point (e.g., "alongside `OpenInferenceTracerLayer`", "extend the `X` table"), grep for it before planning a fix. If it no longer exists, the issue's whole fix-direction may be written against an architecture that has since changed shape — not just a file:line drift, a *premise* drift. Comment the grounding finding (what exists now, what the likely new fix shape is) and drop from the bundle for re-scoping; do not force an implementation against a stale design. (Reason: 2026-09-19 #31/#32/#33 spawn — three exporter/tracing issues all referenced `OpenInferenceTracerLayer` and a fixed "5 event pairs" mapping table, neither of which exist; tracing had since moved to a generic OTel `withSpan()` design. Implementing against the old premise would have shipped code nobody could review against the issue's own description.)
 
 **Drift check (added 2026-05-21):** for any candidate carrying a verified-by command with file:line references, re-run the command. If the emitted line numbers differ from the issue body's claimed lines by **>5** on any row, mark the candidate `🟡 drift detected` and re-read the cited spans to confirm the semantic cast/pattern still matches. Counts can match while locations move 25+ lines — that means the surrounding logic refactored and the fix shape may no longer apply. Acceptable to proceed; not acceptable to skip the check.
 
@@ -162,6 +163,8 @@ Issues: #N, #N, #N
 ## Out-of-scope (explicit)
 - <thing> — punt to next bundle
 ```
+
+**Root-cause direction check (added 2026-09-19).** When an issue proposes a root-cause hypothesis without having confirmed it end-to-end (e.g. "the suspect is X, needs a bisect"), grep the *consumer* of the broken value first — where it's read, aggregated, or reported — before chasing the *producer* the issue suspects. Metric/reporting bugs (a count computed via a fallback derivation, a field silently defaulting) commonly masquerade as behavior regressions in the producer's domain. (Reason: 2026-09-19 #207 spawn — issue suspected an entropy-scoring commit changed kernel termination behavior. The actual bug was in the gate runner's `iterations` metric, which had no real source field and fell back to counting `entropy-scored` trace events — a duplicate-event bug in the suspected commit inflated that count, but the kernel's actual iteration behavior never changed. Bisect correctly found the commit; several minutes were then spent reading kernel/entropy producer code before checking the metric's consumer, which held the answer immediately.)
 
 **Plan gates:**
 - If total estimated effort > `budget_minutes` → descope to fit; do NOT skip verification
@@ -278,6 +281,8 @@ When either holds, the RED is post-hoc regression coverage only — it doesn't p
 | N > 10 sites, OR scaffold spans packages, OR scaffold has 3+ divergent variants | Extract helper. Test helper directly with mocked inputs. |
 
 Mechanical edit wins on review surface (one shape to verify N times) and ships faster. Helper extraction trades that for de-duplication; only worth it when the dup cost exceeds the abstraction cost. (Reason: 2026-05-25 #75 — 5 providers × ~50 LOC identical retry loop. In-place push of 2 lines per provider beat extracting `parseStructuredWithRetry` helper on budget AND eliminated SDK-mock test complexity. Verified-by `grep -c parseAttempts.push` → 10 caught all sites in one check.)
+
+**Cross-runtime RED-test misattribution (added 2026-09-19 v16).** When the mechanical fix is environment-specific (e.g. code that branches on `isBun`/`isNode`/`isWorkerd`), a RED test simulating the *target* environment (workerd) still runs inside the *actual* test environment (Bun/Node) — the mock only fakes the failing primitive, not the runtime-detection flags the code branches on. A failure can then come from a branch that's real in the test's actual environment but unreachable in the real target environment. Before concluding the fix under test is wrong, read the failure's stack trace for which branch fired and check whether that branch is even reachable on the real target runtime. (Reason: 2026-09-19 #205 spawn — `database.ts`'s eager `export const Database = loadDatabase()` hit its unguarded `isBun` branch under `bun test`, not the guarded non-Bun branch a real workerd run would take. Looked like the lazy-`createRequire` fix was broken; was actually a pre-existing missing try/catch in a branch the real bug report never touches.)
 
 **Dead-cast sweep (added 2026-05-21 v5).** Before migrating each cited `as any` site through a new helper, check whether the underlying type already supports the access pattern (the schema may have been tightened since the cast was added; the cast was historic). Delete dead casts outright — lighter diff, no helper indirection, less maintenance. Procedure for each site:
 

@@ -157,6 +157,13 @@ const EXAMPLES: ExampleMeta[] = [
         path: './src/tools/dynamic-registration.ts',
     },
     {
+        num: 'T9',
+        label: 'mcp-oauth',
+        category: 'tools',
+        requiresKey: true,
+        path: './src/tools/T9-mcp-oauth.ts',
+    },
+    {
         num: 'T8',
         label: 'healing-malformed-tool-call',
         category: 'tools',

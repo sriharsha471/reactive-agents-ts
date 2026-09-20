@@ -46,6 +46,50 @@ type CompositeInput = {
   taskCategory?: string;
 };
 
+type CompositeWeights = {
+  token: number;
+  structural: number;
+  semantic: number;
+  behavioral: number;
+  contextPressure: number;
+};
+
+function resolveWeights(input: Pick<CompositeInput, "logprobsAvailable" | "semantic" | "temperature" | "taskCategory">): CompositeWeights {
+  const categoryOverride = input.taskCategory ? CATEGORY_WEIGHTS[input.taskCategory] : undefined;
+  const weights: CompositeWeights = input.logprobsAvailable
+    ? { ...WEIGHTS_WITH_LOGPROBS }
+    : categoryOverride
+      ? { token: 0, ...categoryOverride }
+      : { ...WEIGHTS_WITHOUT_LOGPROBS };
+
+  if (input.logprobsAvailable && input.temperature === 0) {
+    weights.token = 0.15;
+    weights.structural += 0.15;
+  }
+
+  if (input.semantic === null) {
+    const redistribution = weights.semantic;
+    weights.semantic = 0;
+    weights.structural += redistribution * 0.5;
+    weights.behavioral += redistribution * 0.5;
+  }
+
+  return weights;
+}
+
+function weightedComposite(
+  input: Pick<CompositeInput, "token" | "structural" | "semantic" | "behavioral" | "contextPressure">,
+  weights: CompositeWeights,
+): number {
+  return Math.max(0, Math.min(1,
+    (input.token ?? 0) * weights.token +
+    input.structural * weights.structural +
+    (input.semantic ?? 0) * weights.semantic +
+    input.behavioral * weights.behavioral +
+    input.contextPressure * weights.contextPressure,
+  ));
+}
+
 export function computeCompositeEntropy(input: CompositeInput): EntropyScore {
   const {
     token, structural, semantic, behavioral, contextPressure,
@@ -65,23 +109,13 @@ export function computeCompositeEntropy(input: CompositeInput): EntropyScore {
     const defaultTrajectory: EntropyTrajectory = {
       history: [], derivative: 0, momentum: 0.15, shape: "flat",
     };
-    // Compute a real composite from available sources rather than hardcoding
-    const shortRunWeights = logprobsAvailable
-      ? { ...WEIGHTS_WITH_LOGPROBS }
-      : { ...WEIGHTS_WITHOUT_LOGPROBS };
-    if (semantic === null) {
-      const redistribution = shortRunWeights.semantic;
-      shortRunWeights.semantic = 0;
-      shortRunWeights.structural += redistribution * 0.5;
-      shortRunWeights.behavioral += redistribution * 0.5;
-    }
-    const shortRunComposite = Math.max(0, Math.min(1,
-      (token ?? 0) * shortRunWeights.token +
-      structural * shortRunWeights.structural +
-      (semantic ?? 0) * shortRunWeights.semantic +
-      behavioral * shortRunWeights.behavioral +
-      contextPressure * shortRunWeights.contextPressure,
-    ));
+    // Use the same category-aware weights as normal scoring. The only
+    // short-run difference is lower confidence because trajectory evidence is
+    // not yet available.
+    const shortRunComposite = weightedComposite(
+      { token, structural, semantic, behavioral, contextPressure },
+      resolveWeights({ logprobsAvailable, semantic, temperature, taskCategory }),
+    );
     return {
       composite: shortRunComposite,
       sources: {
@@ -100,36 +134,13 @@ export function computeCompositeEntropy(input: CompositeInput): EntropyScore {
     };
   }
 
-  // Start from per-category overrides when available, otherwise use defaults
-  const categoryOverride = taskCategory ? CATEGORY_WEIGHTS[taskCategory] : undefined;
-  const weights = logprobsAvailable
-    ? { ...WEIGHTS_WITH_LOGPROBS }
-    : categoryOverride
-      ? { token: 0, ...categoryOverride }
-      : { ...WEIGHTS_WITHOUT_LOGPROBS };
-
-  // Temperature 0 discount for token entropy
-  if (logprobsAvailable && temperature === 0) {
-    weights.token = 0.15;
-    // Redistribute to structural
-    weights.structural += 0.15;
-  }
-
-  // If semantic unavailable, redistribute its weight
-  if (semantic === null) {
-    const redistribution = weights.semantic;
-    weights.semantic = 0;
-    weights.structural += redistribution * 0.5;
-    weights.behavioral += redistribution * 0.5;
-  }
+  const weights = resolveWeights({ logprobsAvailable, semantic, temperature, taskCategory });
 
   // Compute weighted sum
-  const composite =
-    (token ?? 0) * weights.token +
-    structural * weights.structural +
-    (semantic ?? 0) * weights.semantic +
-    behavioral * weights.behavioral +
-    contextPressure * weights.contextPressure;
+  const composite = weightedComposite(
+    { token, structural, semantic, behavioral, contextPressure },
+    weights,
+  );
 
   // Determine confidence tier
   const sourcesPresent =
@@ -149,7 +160,7 @@ export function computeCompositeEntropy(input: CompositeInput): EntropyScore {
   };
 
   return {
-    composite: Math.max(0, Math.min(1, composite)),
+    composite,
     sources: {
       token: token,
       structural,

@@ -117,6 +117,8 @@ interface ReflexionInput {
   readonly priorCritiques?: readonly string[];
   /** Model identifier for routing/entropy scoring */
   readonly modelId?: string;
+  /** Provider name for entropy-based modelTier resolution */
+  readonly providerName?: string;
   /** LLM temperature override */
   readonly temperature?: number;
   readonly synthesisConfig?: import("../context/synthesis-types.js").SynthesisConfig;
@@ -257,6 +259,7 @@ export const executeReflexion = (
       taskId: input.taskId,
       kernelPass: "reflexion:generate",
       modelId: input.modelId,
+      providerName: input.providerName,
       taskDescription: input.taskDescription,
       temperature: 0.7,
       // #40: arm the A2 long-horizon pace bands in the generate sub-kernel.
@@ -644,6 +647,7 @@ export const executeReflexion = (
             taskId: input.taskId,
             kernelPass: `reflexion:improve-${attempt}`,
             modelId: input.modelId,
+            providerName: input.providerName,
             taskDescription: input.taskDescription,
             temperature: 0.6,
             // #40: arm the A2 long-horizon pace bands in improve sub-kernels.

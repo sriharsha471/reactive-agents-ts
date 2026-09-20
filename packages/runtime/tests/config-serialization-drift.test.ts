@@ -32,6 +32,8 @@ import {
   agentConfigFromJSON,
   type AgentConfig,
 } from "../src/agent-config.js";
+import { HarnessConfigSchema } from "../src/harness-schema.js";
+import type { HarnessConfig } from "@reactive-agents/reasoning";
 
 // ─── Leaf paths that intentionally do NOT survive a full config->builder->config
 //     roundtrip. Every entry MUST carry a documented reason. This set is the
@@ -168,12 +170,11 @@ const MAXIMAL_CONFIG: AgentConfig = {
       verboseRules: true,
       recencyBudgetChars: 4096,
       toolResultBudgetChars: 2048,
-      thoughtContinuity: true,
-      toolObserveSymmetry: true,
       auditRationale: true,
       treeOfThoughtExploreBudgetMs: 120_000,
       assemblyDebug: true,
       promptDumpPathPrefix: "/tmp/drift-guard-prompt",
+      numCtxPolicy: "demand",
     },
   },
   tools: {
@@ -412,4 +413,62 @@ describe("dual-API schema-completeness round-trip pins", () => {
     });
   });
 
+  it("numCtxPolicy survives agentConfigToJSON -> agentConfigFromJSON", () => {
+    // RED before the Fix-1 schema addition: numCtxPolicy exists on HarnessConfig
+    // (packages/reasoning/src/harness-config.ts) but was absent from
+    // HarnessConfigSchema, so Effect's excess-property stripping silently
+    // dropped it on JSON decode even though a live `.withHarness()` call works
+    // (plain object spread doesn't strip unknown keys).
+    const cfg: AgentConfig = {
+      name: "numctx-pin",
+      provider: "anthropic",
+      reasoning: { harness: { numCtxPolicy: "demand" } },
+    };
+    const json = agentConfigToJSON(cfg);
+    const decoded = agentConfigFromJSON(json);
+    expect(decoded.reasoning?.harness?.numCtxPolicy).toBe("demand");
+  });
+
+});
+
+// ─── Bidirectional drift guard for HarnessConfigSchema <-> HarnessConfig ────
+// The COVERAGE/ROUNDTRIP tests above only catch a schema leaf that the fixture
+// forgot to set (schema -> fixture, one direction). They CANNOT catch:
+//   (a) a HarnessConfigSchema field whose backing HarnessConfig field was
+//       deleted (schema is stale, points at nothing) — this is exactly how
+//       thoughtContinuity/toolObserveSymmetry survived removal from
+//       HarnessConfig while staying in the schema and the fixture.
+//   (b) a HarnessConfig field with no HarnessConfigSchema counterpart — this is
+//       exactly how numCtxPolicy shipped without surviving the JSON roundtrip.
+// This guard compares the two field sets directly, in both directions, so
+// either kind of drift fails loudly instead of silently.
+describe("HarnessConfigSchema <-> HarnessConfig bidirectional drift guard", () => {
+  it("HarnessConfigSchema's leaves are exactly HarnessConfig's fields", () => {
+    // Compile-time half of the guard: this object literal must `satisfies
+    // Record<keyof HarnessConfig, true>` — TypeScript rejects it (excess
+    // property or missing property) the moment HarnessConfig gains or loses a
+    // field without this list being updated to match.
+    const harnessConfigFields = {
+      lazyDisclosure: true,
+      toolDiscovery: true,
+      toolIndex: true,
+      toolIndexMaxEntries: true,
+      verboseRules: true,
+      recencyBudgetChars: true,
+      toolResultBudgetChars: true,
+      auditRationale: true,
+      treeOfThoughtExploreBudgetMs: true,
+      assemblyDebug: true,
+      promptDumpPathPrefix: true,
+      numCtxPolicy: true,
+    } satisfies Record<keyof HarnessConfig, true>;
+
+    // Runtime half of the guard: HarnessConfigSchema's own field keys (it's a
+    // flat Schema.Struct, no nesting) must equal that same set exactly — no
+    // schema leaf missing a HarnessConfig field, and no HarnessConfig field
+    // missing a schema leaf.
+    const schemaKeys = Object.keys(HarnessConfigSchema.fields).sort();
+    const configKeys = Object.keys(harnessConfigFields).sort();
+    expect(schemaKeys).toEqual(configKeys);
+  });
 });

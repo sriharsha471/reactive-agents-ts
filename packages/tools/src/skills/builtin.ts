@@ -8,6 +8,7 @@ import { cryptoPriceTool, cryptoPriceHandler } from "./crypto-price.js";
 import { httpGetTool, httpGetHandler } from "./http-client.js";
 import { fileReadTool, fileReadHandler } from "./file-operations.js";
 import { fileWriteTool, fileWriteHandler } from "./file-operations.js";
+import { fileEditTool, fileEditHandler } from "./file-operations.js";
 import { listDirectoryTool, listDirectoryHandler } from "./file-operations.js";
 import { grepTool, grepHandler } from "./grep.js";
 import { codeExecuteTool, codeExecuteHandler } from "./code-execution.js";
@@ -157,6 +158,7 @@ export const builtinTools: ReadonlyArray<{
   { definition: fileReadTool, handler: fileReadHandler },
   { definition: listDirectoryTool, handler: listDirectoryHandler },
   { definition: fileWriteTool, handler: fileWriteHandler },
+  { definition: fileEditTool, handler: fileEditHandler },
   { definition: grepTool, handler: grepHandler },
   { definition: codeExecuteTool, handler: codeExecuteHandler() },
   { definition: gitCliTool, handler: gitCliHandler },
@@ -197,7 +199,7 @@ export const BUILTIN_TOOL_NAMES: ReadonlySet<string> = new Set(
 export const BUILTIN_TOOLSET_ALIASES: Readonly<Record<string, readonly string[]>> = {
   research: ["web-search", "http-get", "grep"],
   web: ["web-search", "http-get"],
-  file: ["file-read", "file-write", "list-directory", "grep"],
+  file: ["file-read", "file-write", "file-edit", "list-directory", "grep"],
   code: ["code-execute"],
   git: ["git-cli", "gh-cli"],
   workspace: ["gws-cli"],

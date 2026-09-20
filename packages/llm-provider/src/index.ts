@@ -145,7 +145,7 @@ export type { LLMErrors, ParseAttemptError } from "./errors.js";
 
 // ─── Service Tags ───
 export { LLMService } from "./llm-service.js";
-export { LLMConfig, LLMConfigFromEnv, llmConfigFromEnv } from "./llm-config.js";
+export { LLMConfig, LLMConfigFromEnv, llmConfigFromEnv, readLLMConfigFromEnv } from "./llm-config.js";
 export { PromptManager, PromptManagerLive } from "./prompt-manager.js";
 
 // ─── Providers ───

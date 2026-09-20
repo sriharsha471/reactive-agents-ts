@@ -1,6 +1,14 @@
 import { describe, test, expect, mock } from "bun:test";
 import { Effect, Layer } from "effect";
-import { makeConsoleExporter, formatMetricsDashboard, formatDuration, type DashboardData } from "../src/exporters/console-exporter.js";
+import {
+  makeConsoleExporter,
+  formatMetricsDashboard,
+  formatDuration,
+  classifyDashboardTrajectory,
+  gradeDashboardEntropy,
+  type DashboardData,
+  type DashboardEntropyPoint,
+} from "../src/exporters/console-exporter.js";
 import { makeFileExporter } from "../src/exporters/file-exporter.js";
 import { ObservabilityService } from "../src/observability-service.js";
 import { makeObservabilityTestLayer } from "./_observability-test-layer.js";
@@ -10,6 +18,20 @@ import { readFileSync, existsSync, unlinkSync } from "fs";
 // ─── Phase 0.3: Console Exporter ───
 
 describe("ConsoleExporter (Phase 0.3)", () => {
+  test("recomputes the captured run as flat instead of trusting polluted shape labels", () => {
+    expect(classifyDashboardTrajectory([0.476, 0.570, 0.569, 0.564])).toBe("flat");
+
+    const points: DashboardEntropyPoint[] = [0.476, 0.570, 0.569, 0.564].map((composite, iteration) => ({
+      iteration,
+      composite,
+      trajectory: { shape: "diverging", derivative: 0, momentum: composite },
+      confidence: "low",
+      sources: { token: null, structural: composite, semantic: null, behavioral: 0.5, contextPressure: 0 },
+    }));
+
+    expect(gradeDashboardEntropy(points, "success")).toBe("C");
+  });
+
   test("exportLogs outputs colored messages", () => {
     const output: string[] = [];
     const origLog = console.log;

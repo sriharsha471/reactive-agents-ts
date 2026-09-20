@@ -83,14 +83,53 @@ export function toTraceEvent(raw: AgentEvent, seq: number): TraceEvent | null {
         // output and replay's diffTraces().outputDiff was structurally blind.
         ...(raw.output !== undefined ? { output: raw.output } : {}),
         ...(raw.outputTruncated === true ? { outputTruncated: true } : {}),
+        ...(raw.terminationReason !== undefined ? { terminatedBy: raw.terminationReason } : {}),
         totalTokens: raw.totalTokens,
-        totalCostUsd: 0,
+        totalCostUsd: raw.totalCostUsd ?? 0,
         durationMs: raw.durationMs,
       }
       return ev
     }
 
     case "EntropyScored": {
+      const src = raw.sources as {
+        token: number | null
+        structural: number
+        semantic: number | null
+        behavioral: number
+        contextPressure: number
+      }
+      const sources = {
+        token: src.token,
+        structural: src.structural,
+        semantic: src.semantic,
+        behavioral: src.behavioral,
+        contextPressure: src.contextPressure,
+      }
+      // Matches the sensor's own confidence-driving count (composite.ts) —
+      // contextPressure is excluded because it is structurally never null, so
+      // including it would make sourcesPresent range 3-5 instead of the real
+      // 2-4 the sensor's confidence tiers are keyed off.
+      const computedSourcesPresent =
+        (sources.token !== null ? 1 : 0) +
+        1 + // structural always present
+        (sources.semantic !== null ? 1 : 0) +
+        1 // behavioral always present
+      // Fallback for pre-branch bus events recorded before this was published
+      // at the source — derive from `sources` when the raw event doesn't
+      // already carry it. `sourcesPresent` is not part of the raw bus-event
+      // type (it's a trace-derived field), so it's read defensively via an
+      // untyped view of the event.
+      const rawSourcesPresent = (raw as unknown as { sourcesPresent?: unknown }).sourcesPresent
+      const sourcesPresent =
+        typeof rawSourcesPresent === "number" ? rawSourcesPresent : computedSourcesPresent
+      const traj = raw.trajectory as { shape?: string } | undefined
+      const confidence =
+        raw.confidence === "high" || raw.confidence === "medium" || raw.confidence === "low"
+          ? raw.confidence
+          : "low"
+      const modelTier =
+        raw.modelTier === "frontier" || raw.modelTier === "local" ? raw.modelTier : "unknown"
       const ev: EntropyScoredEvent = {
         kind: "entropy-scored",
         runId: raw.taskId,
@@ -98,19 +137,28 @@ export function toTraceEvent(raw: AgentEvent, seq: number): TraceEvent | null {
         iter: raw.iteration,
         seq,
         composite: raw.composite,
-        sources: {
-          token: raw.sources.token ?? 0,
-          structural: raw.sources.structural,
-          semantic: raw.sources.semantic ?? 0,
-          behavioral: raw.sources.behavioral,
-          contextPressure: raw.sources.contextPressure,
-        },
+        sources,
+        sourcesPresent,
+        confidence,
+        trajectoryShape: traj?.shape ?? "unknown",
+        modelTier,
       }
       return ev
     }
 
     case "ReactiveDecision": {
-      const hasImprovement = typeof raw.entropyAfter === "number" && typeof raw.entropyBefore === "number" && raw.entropyAfter < raw.entropyBefore
+      const hasImprovement =
+        typeof raw.entropyAfter === "number" &&
+        typeof raw.entropyBefore === "number" &&
+        raw.entropyAfter < raw.entropyBefore
+      // An explicit controller-supplied confidence wins: switch-strategy decisions
+      // carry no entropyBefore/After pair, so the delta formula always fell to 0.
+      const confidence =
+        typeof raw.confidence === "number"
+          ? Math.max(0, Math.min(1, raw.confidence))
+          : hasImprovement
+            ? Math.max(0, 1 - (raw.entropyAfter as number) / (raw.entropyBefore as number))
+            : 0
       const ev: DecisionEvaluatedEvent = {
         kind: "decision-evaluated",
         runId: raw.taskId,
@@ -118,7 +166,7 @@ export function toTraceEvent(raw: AgentEvent, seq: number): TraceEvent | null {
         iter: raw.iteration,
         seq,
         decisionType: raw.decision,
-        confidence: hasImprovement ? Math.max(0, 1 - (raw.entropyAfter as number) / (raw.entropyBefore as number)) : 0,
+        confidence,
         reason: raw.reason,
       }
       return ev

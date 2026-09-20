@@ -11,12 +11,27 @@ export function evaluateStrategySwitch(
 ): (ControllerDecision & { decision: "switch-strategy" }) | null {
   const { entropyHistory, config, strategy, iteration } = params;
   const flatCount = config.flatIterationsBeforeSwitch ?? 3;
+  // 0.45 rather than 0.7: local models accumulate behavioral entropy more slowly
+  // (fewer repeated tool calls before giving up), so a lower bar catches real loops.
+  const LOOP_SCORE_BAR = 0.45;
 
   // Need enough history and must be past early exploration phase.
   // Switching strategy in the first 3 iterations is premature — the model
   // hasn't had runway to demonstrate the current strategy is actually stuck.
   if (entropyHistory.length < flatCount) return null;
   if (iteration < 3) return null;
+
+  // Single-authority rule: the kernel's redirect is the trigger, entropy is the
+  // escalation. Without kernel corroboration this evaluator would fire one
+  // iteration behind the kernel and stack a second, unrelated piece of guidance
+  // into the same context window (observed: run 01M2GM1SZ0FVXDD3TNN0F9FZ5A,
+  // kernel redirect at iter 2, entropy switch at iter 3).
+  //
+  // Scope note: `redirectsIssued` only increments on unresolved TOOL failure
+  // recovery — this guard, and therefore this whole evaluator, is unreachable
+  // for thought-only loops, or for tool calls that succeed but return
+  // unproductive results.
+  if ((params.kernelLoopSignal?.redirectsIssued ?? 0) < 1) return null;
 
   // Check last flatCount entries all have shape "flat"
   const recent = entropyHistory.slice(-flatCount);
@@ -30,18 +45,25 @@ export function evaluateStrategySwitch(
   if (flatEntropy < 0.35) return null;
 
   // Check behavioral loop score exceeds threshold.
-  // 0.45 rather than 0.7: local models accumulate behavioral entropy more slowly
-  // (fewer repeated tool calls before giving up), so a lower bar catches real loops.
-  if (params.behavioralLoopScore <= 0.45) return null;
+  if (params.behavioralLoopScore <= LOOP_SCORE_BAR) return null;
 
   // Simple alternation: suggest the other strategy
   const to =
     strategy === "plan-execute-reflect" ? "reactive" : "plan-execute-reflect";
 
+  // Scale confidence by headroom above the 0.45 bar: a score of 0.46 is a weak
+  // signal, 0.9 is a strong one. Consumers need to tell these apart — the
+  // decision alone does not say how sure the controller was.
+  const confidence = Math.max(
+    0,
+    Math.min(1, (params.behavioralLoopScore - LOOP_SCORE_BAR) / (1 - LOOP_SCORE_BAR)),
+  );
+
   return {
     decision: "switch-strategy",
     from: strategy,
     to,
+    confidence,
     reason: `Entropy flat for ${flatCount} iterations with high loop score (${params.behavioralLoopScore.toFixed(2)}), switching from ${strategy} to ${to}`,
   };
 }

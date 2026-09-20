@@ -27,7 +27,6 @@ import type {
   ContextProfile,
   KernelMetaToolsConfig,
 } from "@reactive-agents/reasoning";
-import { overhaulEnabled } from "@reactive-agents/reasoning";
 import type { ReasoningOptions, CalibrationMode } from "../../types.js";
 import type { TestTurn, LLMService } from "@reactive-agents/llm-provider";
 import type { ResultCompressionConfig } from "@reactive-agents/tools";
@@ -42,7 +41,6 @@ import type {
   GuardrailsOptions,
   VerificationOptions,
   ObservabilityOptions,
-  A2AOptions,
   GatewayOptions,
   ModelRoutingOptions,
 } from "../types.js";
@@ -154,7 +152,6 @@ export interface BuilderRuntimeStateView {
   readonly _environmentContext?: Record<string, string>;
   readonly _mcpServers: MCPServerConfig[];
   readonly _reasoningOptions?: ReasoningOptions;
-  readonly _a2aOptions?: A2AOptions;
   readonly _gatewayOptions?: GatewayOptions;
   readonly _contextProfile?: Partial<ContextProfile>;
   readonly _resultCompression?: ResultCompressionConfig;
@@ -372,10 +369,6 @@ export const buildBaseRuntimeAndEngine = (
         recallConfig: mt.recallConfig,
         relate: mt.relate,
         todo: mt.todo,
-        // Overhaul A/B (branch overhaul/agentic-core): register write_result_to_file
-        // when RA_OVERHAUL=1 so the model can materialize a deliverable by reference
-        // instead of transcribing / copying the [STORED:] marker.
-        writeResultToFile: overhaulEnabled(),
         staticBriefInfo: {
           indexedDocuments: [],
           availableSkills: [],
@@ -473,9 +466,6 @@ export const buildBaseRuntimeAndEngine = (
       mcpServers:
         state._mcpServers.length > 0 ? state._mcpServers : undefined,
       reasoningOptions: state._reasoningOptions,
-      enableA2A: !!state._a2aOptions,
-      a2aPort: state._a2aOptions?.port,
-      a2aBasePath: state._a2aOptions?.basePath,
       enableGateway: !!state._gatewayOptions,
       gatewayOptions: state._gatewayOptions,
       contextProfile: state._contextProfile,

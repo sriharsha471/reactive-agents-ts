@@ -14,7 +14,11 @@ import type { TestTurn } from "@reactive-agents/llm-provider";
 import type { ReasoningOptions } from "./types.js";
 import type { ObservabilityOptions } from "./builder.js";
 import type { ContextProfile } from "@reactive-agents/reasoning";
-import type { ResultCompressionConfig } from "@reactive-agents/tools";
+import type {
+  ResultCompressionConfig,
+  MCPAuthConfig,
+  MCPTokenStore,
+} from "@reactive-agents/tools";
 import type { TelemetryConfig } from "@reactive-agents/observability";
 import type { KernelMetaToolsConfig } from "@reactive-agents/reasoning";
 
@@ -87,6 +91,26 @@ export interface MCPServerConfig {
    *
    */
   headers?: Record<string, string>;
+  /**
+   * OAuth configuration for connecting to a protected MCP server. See
+   * `@reactive-agents/tools`'s `MCPAuthConfig` for the discriminated-union
+   * shape (`client_credentials`, `private_key_jwt`, `authorization_code`,
+   * or a raw SDK `provider`).
+   *
+   * `clientSecret` / `privateKey` are config-caller-supplied strings — read
+   * them from your own env/secret-manager and pass the resolved value; no
+   * env-var interpolation syntax is supported here.
+   */
+  auth?: MCPAuthConfig;
+  /**
+   * Where OAuth credentials for this server are persisted across
+   * connections. Defaults to a persistent file store under
+   * `~/.reactive-agents/mcp-auth` (permissions 0700/0600) when `auth` is set
+   * without one — matching `rax mcp login`'s own default store, so a login
+   * run beforehand is actually found. Pass `createMemoryTokenStore()` from
+   * `@reactive-agents/tools` for tests/CI that must not touch disk.
+   */
+  tokenStore?: MCPTokenStore;
 }
 
 /**
@@ -486,29 +510,6 @@ export interface RuntimeOptions {
    * Default: undefined (minimal observability)
    */
   observabilityOptions?: ObservabilityOptions;
-
-  // ─── A2A Configuration ───
-
-  /**
-   * Enable Agent-to-Agent (A2A) protocol server.
-   *
-   * Default: `false`
-   */
-  enableA2A?: boolean;
-
-  /**
-   * HTTP port for the A2A server.
-   *
-   * Default: `3000`
-   */
-  a2aPort?: number;
-
-  /**
-   * Base path for A2A endpoints (e.g., `/api/agents` → `http://localhost:3000/api/agents/rpc`).
-   *
-   * Default: `/` (root)
-   */
-  a2aBasePath?: string;
 
   // ─── Gateway Configuration ───
 

@@ -1,16 +1,21 @@
 /**
- * act-symmetry.test.ts — Phase E (E1 + E2) of the canonical-tool-execution plan.
+ * act-symmetry.test.ts — Phase E (E1) of the canonical-tool-execution plan.
  *
  * E1 (unconditional): a 2-call PARALLEL batch through `handleActing` fires
  * `observation.tool-result` once per executed tool — closing the #195 bug class
  * for parallel turns (batch tool-results were invisible to .on()/.tap()).
  *
- * E2 (gated, default OFF): with RA_TOOL_OBSERVE_SYMMETRY=1 the SINGLE path
- * attaches a `verification` to the obsStep; with the flag unset it does not
- * (byte-identical to the pre-Phase-E single path — pinned by the Phase B
- * golden-master). The old semantic-memory leg was removed in Move 4 (2026-08):
- * the tool-observation write was dead (retrieval never wired), so the kernel
- * no longer calls storeSemantic on either path.
+ * E2 was an experimental, gated (default OFF) single/batch symmetry mechanism
+ * (`RA_TOOL_OBSERVE_SYMMETRY=1` made the SINGLE path also attach a
+ * `verification` to the obsStep, matching the batch path). The 2026-09-15
+ * ablation found it INERT on the golden corpus with no accuracy lift and a
+ * large (+56.5%) live token cost — verdict DELETE
+ * (wiki/Decisions/2026-09-15-experimental-flag-verdicts.md). The flag and its
+ * single-path verifier-attaching code are removed; the single path
+ * permanently behaves as the pre-Phase-E single path (no verification,
+ * pinned by the Phase B golden-master). The old semantic-memory leg was
+ * removed in Move 4 (2026-08): the tool-observation write was dead (retrieval
+ * never wired), so the kernel no longer calls storeSemantic on either path.
  */
 import { describe, it, expect } from "bun:test";
 import { Effect, Option } from "effect";
@@ -153,57 +158,25 @@ describe("act symmetry — E1 batch compose tags (unconditional)", () => {
   });
 });
 
-describe("act symmetry — E2 single path gated by RA_TOOL_OBSERVE_SYMMETRY", () => {
-  it("WITH flag=1: single-path obsStep has verification (Move 4: semantic write removed)", async () => {
-    const prev = process.env.RA_TOOL_OBSERVE_SYMMETRY;
-    process.env.RA_TOOL_OBSERVE_SYMMETRY = "1";
-    try {
-      const { pipeline, steps } = recordingPipeline("observation.tool-result");
-      const mem = recordingMemoryService();
-      const layer = TestLLMServiceLayer();
+describe("act symmetry — single path never attaches verification (RA_TOOL_OBSERVE_SYMMETRY removed)", () => {
+  it("single-path obsStep has NO verification AND memory not called", async () => {
+    const { pipeline, steps } = recordingPipeline("observation.tool-result");
+    const mem = recordingMemoryService();
+    const layer = TestLLMServiceLayer();
 
-      await Effect.runPromise(
-        handleActing(
-          baseState([{ id: "s1", name: "web-search", arguments: { query: "btc" } }]),
-          baseContext(pipeline, { memoryService: mem.service }),
-        ).pipe(Effect.provide(layer)),
-      );
+    await Effect.runPromise(
+      handleActing(
+        baseState([{ id: "s1", name: "web-search", arguments: { query: "btc" } }]),
+        baseContext(pipeline, { memoryService: mem.service }),
+      ).pipe(Effect.provide(layer)),
+    );
 
-      expect(steps.length).toBe(1);
-      expect(steps[0]!.metadata?.verification).toBeDefined();
-      // Move 4 (2026-08): the dead tool-observation semantic write was removed
-      // (retrieval was never wired). The kernel must no longer call storeSemantic.
-      await new Promise((r) => setTimeout(r, 50));
-      expect(mem.stored.length).toBe(0);
-    } finally {
-      if (prev === undefined) delete process.env.RA_TOOL_OBSERVE_SYMMETRY;
-      else process.env.RA_TOOL_OBSERVE_SYMMETRY = prev;
-    }
-  });
-
-  it("WITHOUT flag: single-path obsStep has NO verification AND memory not called", async () => {
-    const prev = process.env.RA_TOOL_OBSERVE_SYMMETRY;
-    delete process.env.RA_TOOL_OBSERVE_SYMMETRY;
-    try {
-      const { pipeline, steps } = recordingPipeline("observation.tool-result");
-      const mem = recordingMemoryService();
-      const layer = TestLLMServiceLayer();
-
-      await Effect.runPromise(
-        handleActing(
-          baseState([{ id: "s1", name: "web-search", arguments: { query: "btc" } }]),
-          baseContext(pipeline, { memoryService: mem.service }),
-        ).pipe(Effect.provide(layer)),
-      );
-
-      expect(steps.length).toBe(1);
-      expect(steps[0]!.metadata?.verification).toBeUndefined();
-      await new Promise((r) => setTimeout(r, 50));
-      expect(mem.stored.length).toBe(0);
-    } finally {
-      if (prev === undefined) delete process.env.RA_TOOL_OBSERVE_SYMMETRY;
-      else process.env.RA_TOOL_OBSERVE_SYMMETRY = prev;
-    }
+    expect(steps.length).toBe(1);
+    expect(steps[0]!.metadata?.verification).toBeUndefined();
+    // Move 4 (2026-08): the dead tool-observation semantic write was removed
+    // (retrieval was never wired). The kernel must no longer call storeSemantic.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mem.stored.length).toBe(0);
   });
 });
 

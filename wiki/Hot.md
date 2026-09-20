@@ -1,7 +1,7 @@
 ---
 aliases: [Recent Context]
 tags: [meta, session-start]
-updated: 2026-08-16
+updated: 2026-09-19
 ---
 
 # Hot (Recent Context Cache)
@@ -10,59 +10,46 @@ updated: 2026-08-16
 
 ---
 
-## 2026-08-16 — health sweep (pre-release cleanliness pass)
+## 2026-09-19 — surface-high-leverage-work skill + kernel-termination-regression bundle (PR #209)
 
-User asked for a DX/cleanliness pass before v0.15.0. 4 parallel scan agents
-found a real correctness bug in earlier-this-session code (HS-224: 3 of 5
-scratchpad-spill read sites bypassed marker resolution — the grounding guard
-could inject the raw `[SPILLED_TO_DISK:...]` marker into the model's evidence
-prompt), 2 crash-instead-of-degrade robustness fixes (HS-225/226), and a
-dead-export deletion + DX doc/error-suggestion gap. A reported P0 ("tool
-validation doesn't fire on the real path") turned out FALSE on independent
-repro — registration is lazy (fires at `run()`, not `build()`), and it
-correctly throws. Filed as a finding-shape for future sweeps rather than
-fixed. Full findings:
-[[Issues/Running Issues Log#Health Sweep — 2026-08-16 (v0.15.0 release-prep)]].
-Debrief: [[Research/Debriefs/2026-08-16-health-sweep-debrief]].
+New `surface-high-leverage-work` skill shipped (`.claude/skills/surface-high-leverage-work/`) — DISCOVER→SCAN→GROUND→SCORE→DEDUPE→FILE→BATCH→PRESENT loop, chains `codebase-health-sweep`/`architecture-audit` for fresh code discovery rather than only re-ranking trackers. 4 sweeps run same day; canonical record at `wiki/Planning/Recommended-Enhancements.md`. Filed #205 (Cloudflare Workers `createRequire` crash), #206 (no abstention synthesis on budget exhaustion — descoped from execution, needs its own design pass), #207 (North Star gate 14-scenario "regression").
 
-## 2026-08-16 — code-action-worker-interruption bundle
+`execute-backlog` ran on #207: bisected to `d43de304`, found it was a **stale baseline, not a kernel bug** — the gate's `iterations` metric falls back to counting `entropy-scored` trace events (`packages/testing/src/gate/runner.ts:65-74`); a prior double-scoring bug had inflated that count, and `d43de304` correctly fixed the double-scoring. Regenerated the baseline instead of touching kernel code. PR #209 (against `dev`), retro + `execute-backlog` self-amendment (root-cause-direction check) landed alongside.
 
-Closed #35 (real, current bug — not stale): `code-action`'s sandbox Worker
-kept running unsupervised after the run's fiber was interrupted, since
-`runInSandbox` wrapped a bare `Promise` via `Effect.tryPromise`. Now returns
-an `Effect.async` with an interrupt finalizer that terminates the Worker.
-Regression test proves it behaviorally (RED-confirmed against pre-fix code).
-Residual, documented limitation: an already-in-flight tool call itself isn't
-interrupted, only the Worker stops making further progress. Skill amended
-(v14): fiber-interruption regression tests must keep fork+wait+interrupt in
-one `Effect.gen`, or the fork's own ephemeral scope self-interrupts the
-child before the test can observe it. Retro:
-[[Research/Debriefs/2026-08-16-code-action-worker-interruption-execution-debrief]].
+## 2026-09-19 — `dev` staging branch introduced; local `main` divergence fixed
 
-## 2026-08-16 — replay-determinism-revalidation bundle
+Local `main` had silently diverged from `origin/main` (80 local-only commits
+vs 2 origin-only commits with matching messages but very different content —
+looks like a prior automated release-flow reset rewrote `origin/main`,
+consistent with the known [[feedback_push_main_before_tag]] pattern). Fixed:
+created `dev` at the old local-`main` tip (`6a819582`, captures all 80
+commits, pushed to `origin/dev`), then reset local `main` to `origin/main`
+(local-only reset to an already-existing remote ref — no force-push, remote
+untouched). **New workflow going forward:** land work on `dev`, not `main`;
+`main` only moves via merging `dev` in at release time, immediately followed
+by the tag. Canonical write-up: `AGENTS.md` §Release Workflow (Tag-Driven).
+Also this session: fixed a TOML-escaping bug in PR #204's new
+cloudflare-worker template and, via a live `wrangler dev` smoke test (not
+just bundle dry-run), found+filed a real blocking bug in `runtime-shim` —
+`createRequire(import.meta.url)` at module scope crashes on workerd for
+every provider, not just the PR's OpenAI default (issue #205, sub-issue
+of #59).
 
-Closed #30 + #53. #30 turned out already-shipped (PR #196/#197, never closed
-against the work) — closed with evidence, no code change. #53 re-ran the
-full determinism-pinning suite cluster (44 tests, 0 fail), published
-`wiki/Research/Harness-Reports/replay-determinism-revalidation-2026-08-16.md`.
-Merged to local `main` directly (same hold-until-tag convention as the prior
-bundle). Retro:
-[[Research/Debriefs/2026-08-16-replay-determinism-revalidation-execution-debrief]].
+## 2026-09-15 — wire-or-delete hardening wave (9 tasks, `96f10a22..84d43fcf`)
 
-## 2026-08-16 — v0.15.0 release-prep + tools-result-handling bundle
+Gate-clean on `wave/wire-or-delete-2026-09` (`84d43fcf`) — keyless-refusal
+security fix, run-completed trace truth, strategy-switch ledger-drop fix, 3
+dead flags deleted, wither-proof census gate, full suite 9294/9264 pass (1
+known pre-existing `as-unknown-as` gap). **Now merges into `dev`, not
+`main`, per the branch-topology fix above.** Debrief:
+[[Research/Debriefs/2026-09-15-wire-or-delete-hardening-wave-debrief]].
 
-Not yet tagged. Root-caused + fixed a `t0-deterministic` gate regression
-(`c2418864`) — see [[project_t0_deterministic_regression_2026_08_16]] in
-Claude memory. Reconciled `ROADMAP.md`'s version-to-arc mapping (was
-self-contradicting; v0.15 renamed to an interim "Stability & QOL" cut, Arc 2
-Boundary+Gate moved to v0.16). Shipped `bundle/tools-result-handling`
-(#47/#57/#58, merged `22547736`): bounded scratchpad with disk spill
-(`packages/tools/src/scratchpad-spill.ts`), registration-time tool-definition
-schema validation, clear tool-result error messages. Full suite 8902 pass /
-0 fail / 1157 files. Merged to local `main` directly (not a GitHub PR — this
-repo holds unreleased work locally until tag time; a PR against `origin/main`
-right now would show 357+ unrelated commits). Retro:
-[[Research/Debriefs/2026-08-16-tools-result-handling-execution-debrief]].
+## 2026-08-16 bundles (condensed)
+
+- **Health sweep** — HS-224 grounding-guard marker leak fixed, 2 robustness fixes; a reported P0 was FALSE on repro. [[Research/Debriefs/2026-08-16-health-sweep-debrief]]
+- **code-action-worker-interruption** — closed #35, sandbox Worker now stops on fiber interrupt. [[Research/Debriefs/2026-08-16-code-action-worker-interruption-execution-debrief]]
+- **replay-determinism-revalidation** — closed #30 (already-shipped) + #53 (44 tests, 0 fail). [[Research/Debriefs/2026-08-16-replay-determinism-revalidation-execution-debrief]]
+- **v0.15.0 release-prep + tools-result-handling** — fixed `t0-deterministic` regression (`c2418864`); shipped `bundle/tools-result-handling` (#47/#57/#58). [[Research/Debriefs/2026-08-16-tools-result-handling-execution-debrief]]
 
 ## Active program (2026-07-28)
 
@@ -89,12 +76,12 @@ tool-callers. Promotion requires rungs 2 and 3 to agree in sign.
 
 ## What's Next
 
-1. **v0.14 launch line** — cut v0.14, publish bench receipts (Arc 1 launch-gate item 5), Show-HN, push main. Overdue since Wave A/B boundary (07-08).
-2. **Wire-or-delete sweep** — adapter hooks, CompletionEnvelope (blueprint/code-action), RA_RECITE session, ledger dead kinds, verifierTier, adaptive-plan fields.
-3. **#39 per-entity requirements**, **#44 kernel→engine signal unification**, **#38 thought-continuity ablation** (Ollama `thinking` capture prereq).
-4. RATIFY-or-reject subagents-and-logging DRAFT.
-5. Bench P2 remainder (7 llm-judge → graded, re-baseline) + P3 `horizon:long` tasks; then #36 adaptive re-cut.
-6. Small: `metrics-cache.json` 7190→7671 write-back (else next `metrics:sync-readme` regresses README); `.agents/MEMORY.md` 407KB archive split.
+1. **Tag + ship wire-or-delete wave** — `wave/wire-or-delete-2026-09` is gate-clean at `84d43fcf`; merge to **`dev`** (not `main` — see 2026-09-19 branch-topology fix), then `dev` → `main` → tag when release-ready (`release:dry 0.16.1` clean).
+2. **Wither batches 2-4** — Task 8's census left batches 2-4 as a disclosed backlog (queue produced by Task 8 Step 2); batch 1 (behavioral seams) shipped.
+3. **`as-unknown-as` ceiling gap** — 79 actual sites vs ceiling 78, confirmed pre-existing (predates this wave); needs a future session to either remove a cast or deliberately ratchet the ceiling with justification.
+4. **τ-bench environment bridge** — still tabled (owner decision, 2026-09-14), not touched by this wave.
+5. **#39 per-entity requirements**, **#44 kernel→engine signal unification** — separate lift-gated items, untouched.
+6. Bench P2 remainder (7 llm-judge → graded, re-baseline) + P3 `horizon:long` tasks; then #36 adaptive re-cut.
 
 ## Prior Sessions (compact pointers)
 
@@ -119,16 +106,8 @@ tool-callers. Promotion requires rungs 2 and 3 to agree in sign.
 
 At session end: replace "Latest Session" with new date + key updates, demote prior to one-line pointers, update "What's Next." Keep under 120 lines.
 
-**Last Updated:** 2026-08-18
-**Current Phase:** v0.14 launch line + wire-or-delete sweep (post root-cause fortnight)
+**Last Updated:** 2026-09-19
+**Current Phase:** `dev` staging branch live; wire-or-delete wave gate-clean, awaiting merge to `dev`
 
-## Session Note (2026-08-18)
-Executed backlog bundle `health-export-surface` + `umbrella-export-surface` (issue #155). Re-verified all 4 sub-items natively (RTK/stale claims): HS-D-01 (observe) and HS-D-02 (vue) already dead — coverage landed since the 2026-05-27 sweep. HS-D-17 (health) and HS-D-19 (umbrella) fixed with additive shape tests (`adc3dbe1`, `f8063744`). Issue closed. Build 37/37, `bun test packages/health/` 9/0, `bun test packages/reactive-agents/` 20/0. See wiki/Research/Debriefs/2026-08-18-health-umbrella-export-surface-execution-debrief.md.
-
-Continued same session: closed #61 (v0.11.0 tracker — all 3 sub-items resolved/stale; ToT `dispatcher-early-stop` debt item confirmed fixed by #127, synced `.agents/MEMORY.md`). Closed #188 (AgentStreamEvent 3-way divergence) — original claims mostly dead (ui-core now exists as the shared entry point), but found and fixed a live successor bug: react/svelte/vue each independently hand-rolled a lossy 5-tag escape-hatch `AgentStreamEvent` masking a silent cast that dropped 15 of 20 real event tags. Fixed all 3 (`2afbd7c8`, `92d28315`, `d4aae9c1`). Build 37/37. See wiki/Research/Debriefs/2026-08-18-agentstreamevent-dedup-execution-debrief.md.
-
-Closed #184 (kernel import cycles) — drift found (assembly/context relocated out of kernel/, cycle count 9→14). Fixed the still-matching cluster (5 assembly project↔stages cycles, `5dd47133`, pure type-extraction to `assembly-ctx.ts`). Filed #200 with accurate current-state evidence for the remaining 8 (not one coherent bundle — different root causes). Amended SKILL.md's execute-backlog Phase 3.5 (branch-before-edit discipline, v15) after catching a branch-discipline slip mid-pass. #124/#125 reviewed and left open — large open research RFCs, not root-cause-fixable bugs, out of this skill's scope. See wiki/Research/Debriefs/2026-08-18-kernel-assembly-cycle-fix-execution-debrief.md.
-
-Followed up on #200 same session: fixed 6 of its 8 cycles (`9cc56f78`) — ledger cluster (3), llm-gateway↔purpose-routing (1), kernel-state↔synthesis-types (1), kernel-state↔verifier (1), all via the same leaf-extraction shape. Left #200 open, scoped to the remaining 2 (kernel-state↔completion-envelope/completion-status) — genuinely different shape, envelope/status derive FROM the full KernelState by design, needs a Pick<> narrowing refactor not a leaf extraction. `bunx madge --circular src/kernel`: 8→2. Build 37/37, reasoning tests 2718/0/4todo unchanged.
-
-Closed #200 out same session (`ad89fe88`): the last 2 cycles fixed via structural narrowing rather than a shared-type extraction — `envelopeFromKernelState`/`resolveCompletionStatus`/etc. only read 5 meta fields + status, so a narrow `CompletionAuthorityState` interface (any real `KernelState` satisfies it for free, zero call-site casts) broke the cycle. `bunx madge --circular src/kernel`: 0 (was 8 at #200's filing). New reusable pattern for future god-object cycles noted in the retro. Build 37/37, reasoning tests unchanged.
+## 2026-08-18 (condensed)
+Closed #155 (health/umbrella export surface, 2 real fixes), #61 (v0.11.0 tracker, stale), #188 (AgentStreamEvent — found+fixed a live 3-way divergence bug across react/svelte/vue), #184+#200 (kernel import cycles, `bunx madge --circular src/kernel`: 9→14→2→0 across the session). See `wiki/Research/Debriefs/2026-08-18-*-execution-debrief.md` for the four retros.

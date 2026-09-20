@@ -90,6 +90,7 @@ export interface PendingGuidance {
 export interface KernelEntropyMeta {
   readonly taskDescription?: string;
   readonly modelId?: string;
+  readonly providerName?: string;
   readonly temperature?: number;
   readonly taskCategory?: string;
   readonly lastLogprobs?: readonly { token: string; logprob: number; topLogprobs?: readonly { token: string; logprob: number }[] }[];
@@ -132,6 +133,15 @@ export interface KernelMeta {
    * call site. Absent → today's absolute-count guards (byte-identical).
    */
   readonly horizonProfile?: "long";
+
+  /**
+   * D-2026-07-30-I: run-scoped high-water mark for demand-driven Ollama
+   * `num_ctx` (opt-in via HarnessConfig.numCtxPolicy = "demand"). Ollama
+   * reloads the model whenever `num_ctx` changes between requests, so
+   * `nextNumCtx` (assembly/capability.ts) only ever grows this value within a
+   * run — never present/read when the policy is unset ("fixed", the default).
+   */
+  readonly numCtxHighWater?: number;
 
   // ── HS-115 / Audit G-E — tool nomination (anti-scaffold F4 closure) ──
   /**
@@ -1151,6 +1161,8 @@ export interface KernelRunOptions {
   readonly taskDescription?: string;
   /** Model identifier for entropy-based intelligence routing */
   readonly modelId?: string;
+  /** Provider name for entropy-based modelTier resolution */
+  readonly providerName?: string;
   /** LLM temperature for entropy-based intelligence routing */
   readonly temperature?: number;
   /** Task category for per-category entropy scoring adjustments */
@@ -1187,11 +1199,12 @@ export interface KernelRunOptions {
  */
 export function initialKernelState(opts: KernelRunOptions): KernelState {
   // Build entropy meta only when at least one entropy field is provided
-  const hasEntropy = opts.taskDescription !== undefined || opts.modelId !== undefined || opts.temperature !== undefined || opts.taskCategory !== undefined;
+  const hasEntropy = opts.taskDescription !== undefined || opts.modelId !== undefined || opts.providerName !== undefined || opts.temperature !== undefined || opts.taskCategory !== undefined;
   const entropyMeta = hasEntropy
     ? {
         ...(opts.taskDescription !== undefined ? { taskDescription: opts.taskDescription } : {}),
         ...(opts.modelId !== undefined ? { modelId: opts.modelId } : {}),
+        ...(opts.providerName !== undefined ? { providerName: opts.providerName } : {}),
         ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
         ...(opts.taskCategory !== undefined ? { taskCategory: opts.taskCategory } : {}),
       }

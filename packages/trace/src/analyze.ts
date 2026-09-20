@@ -423,6 +423,24 @@ export interface CostSignal {
   readonly inOutSplitAvailable: boolean;
 }
 
+export interface EntropyDegradation {
+  /**
+   * Lowest sourcesPresent (2-4; excludes contextPressure, which is never
+   * null — see EntropyScoredEvent.sourcesPresent) seen across all
+   * entropy-scored events; 0 when none fired.
+   */
+  readonly minSourcesPresent: number;
+  /**
+   * Highest sourcesPresent (2-4; excludes contextPressure, which is never
+   * null) seen across all entropy-scored events; 0 when none fired.
+   */
+  readonly maxSourcesPresent: number;
+  /** Iterations where the composite was a partial signal (sourcesPresent < 4). */
+  readonly degradedIterations: number;
+  /** Iterations where the sensor self-reported low confidence. */
+  readonly lowConfidenceIterations: number;
+}
+
 export interface ReasoningTrajectory {
   readonly entropyFirst?: number;
   readonly entropyLast?: number;
@@ -431,6 +449,8 @@ export interface ReasoningTrajectory {
   readonly decisionTypes: Readonly<Record<string, number>>;
   /** Final step composition, from the last snapshot. */
   readonly stepsByTypeFinal: Readonly<Record<string, number>>;
+  /** Surfaces partial-source composites (RC-1/RC-2) without hand-grepping JSONL. */
+  readonly entropyDegradation: EntropyDegradation;
 }
 
 export interface ToolOutcome {
@@ -602,7 +622,8 @@ export function analyzeRun(trace: Trace, opts: AnalyzeOptions = {}): RunAnalysis
   };
 
   // ── Reasoning trajectory ──────────────────────────────────────────────────
-  const entropies = ev.filter(isEntropy).map((e) => e.composite);
+  const entropyEvents = ev.filter(isEntropy);
+  const entropies = entropyEvents.map((e) => e.composite);
   const entropyFirst = entropies.at(0);
   const entropyLast = entropies.at(-1);
   let entropyShape: ReasoningTrajectory["entropyShape"] = "unknown";
@@ -612,12 +633,24 @@ export function analyzeRun(trace: Trace, opts: AnalyzeOptions = {}): RunAnalysis
   }
   const decisionTypes: Record<string, number> = {};
   for (const d of ev.filter(isDecision)) decisionTypes[d.decisionType] = (decisionTypes[d.decisionType] ?? 0) + 1;
+  // RC-1/RC-2: surface degraded-source composites (sourcesPresent < 4, the
+  // real max once contextPressure — never null — is excluded) and
+  // low-confidence iterations so they're visible in rax:diagnose without
+  // hand-grepping JSONL.
+  const sourcesCounts = entropyEvents.map((e) => e.sourcesPresent);
+  const entropyDegradation: EntropyDegradation = {
+    minSourcesPresent: sourcesCounts.length > 0 ? Math.min(...sourcesCounts) : 0,
+    maxSourcesPresent: sourcesCounts.length > 0 ? Math.max(...sourcesCounts) : 0,
+    degradedIterations: entropyEvents.filter((e) => e.sourcesPresent < 4).length,
+    lowConfidenceIterations: entropyEvents.filter((e) => e.confidence === "low").length,
+  };
   const reasoning: ReasoningTrajectory = {
     ...(entropyFirst !== undefined ? { entropyFirst } : {}),
     ...(entropyLast !== undefined ? { entropyLast } : {}),
     entropyShape,
     decisionTypes,
     stepsByTypeFinal: lastSnap?.stepsByType ?? {},
+    entropyDegradation,
   };
 
   // ── Tool outcomes ──────────────────────────────────────────────────────────
@@ -721,7 +754,7 @@ export function analyzeWire(
   const flags: string[] = [];
   if (assistantTurns >= 2 && assistantProseChars === 0) {
     flags.push(
-      "assistant turns carry NO prose — the model never re-reads its own reasoning (thought continuity OFF; RA_THOUGHT_CONTINUITY=1 to trial)",
+      "assistant turns carry NO prose — the model never re-reads its own reasoning (thought continuity is permanently OFF; the RA_THOUGHT_CONTINUITY trial mechanism was measured INERT and removed 2026-09-15, see wiki/Decisions/2026-09-15-experimental-flag-verdicts.md)",
     );
   }
   const avg = schemaTotal / exchanges.length;
@@ -748,7 +781,8 @@ export function renderRunReport(a: RunAnalysis): string {
   L.push(`OUTCOME: ${a.honesty.label}  (${a.honesty.evidence})`);
   L.push(`  iterations=${a.iterations} tokens=${a.cost.totalTokens} llmCalls=${a.cost.llmCalls} interventionTokens≈${a.cost.interventionEstimatedTokens}`);
   if (a.interventions.terminalDecision) L.push(`  ended by: ${a.interventions.terminalDecision.reason}`);
-  L.push(`REASONING: entropy ${a.reasoning.entropyFirst ?? "?"}→${a.reasoning.entropyLast ?? "?"} (${a.reasoning.entropyShape}); steps=${JSON.stringify(a.reasoning.stepsByTypeFinal)}`);
+  const ed = a.reasoning.entropyDegradation;
+  L.push(`REASONING: entropy ${a.reasoning.entropyFirst ?? "?"}→${a.reasoning.entropyLast ?? "?"} (${a.reasoning.entropyShape}); steps=${JSON.stringify(a.reasoning.stepsByTypeFinal)} · sources ${ed.minSourcesPresent}-${ed.maxSourcesPresent}/4 (degraded ${ed.degradedIterations} iter) · confidence: low in ${ed.lowConfidenceIterations} iter`);
   if (Object.keys(a.reasoning.decisionTypes).length) L.push(`  decisions: ${Object.entries(a.reasoning.decisionTypes).map(([k, v]) => `${k}:${v}`).join(" ")}`);
   L.push(`COST: trajectory=[${a.cost.tokenTrajectory.join("→")}] maxΔ=${a.cost.maxIterTokenDelta}${a.cost.inOutSplitAvailable ? "" : "  (in/out+cache split BLIND)"}`);
   if (a.tools.length) {

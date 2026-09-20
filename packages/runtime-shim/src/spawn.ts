@@ -2,7 +2,10 @@ import { createRequire } from "node:module";
 import { isBun } from "./detect.js";
 import type { SpawnOptions, SpawnResult } from "./types.js";
 
-const require = createRequire(import.meta.url);
+let _require: NodeJS.Require | undefined;
+function nodeRequire(): NodeJS.Require {
+  return (_require ??= createRequire(import.meta.url));
+}
 
 interface BunSpawnApi {
   spawn(cmd: string[], opts?: Record<string, unknown>): {
@@ -34,7 +37,7 @@ function spawnBun(cmd: string[], options: SpawnOptions): SpawnResult {
 }
 
 function spawnNode(cmd: string[], options: SpawnOptions): SpawnResult {
-  const { spawn: nodeSpawn } = require("node:child_process") as typeof import("node:child_process");
+  const { spawn: nodeSpawn } = nodeRequire()("node:child_process") as typeof import("node:child_process");
   const [bin, ...args] = cmd;
   if (!bin) throw new Error("spawn: empty command array");
 

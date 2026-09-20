@@ -454,6 +454,8 @@ export type AgentEvent =
        * closed `TerminatedBy` schema (5 values).
        */
       readonly terminationReason?: string;
+      /** Run cost in USD (result.metadata.cost) — optional so older publishers stay valid. */
+      readonly totalCostUsd?: number;
       /** B8-T3b: the top-most run in this delegation tree (RunContext.rootRunId). */
       readonly rootRunId?: string;
       /** B8-T3b: the run that spawned this one (RunContext.parentRunId). */
@@ -704,6 +706,10 @@ export type AgentEvent =
       readonly reason: string;
       readonly entropyBefore: number;
       readonly entropyAfter?: number;
+      /** Controller-supplied confidence (0-1), e.g. switch-strategy's loop-score
+       *  headroom. Preferred by trace/normalize.ts over the entropyBefore/After
+       *  delta formula, which switch-strategy decisions never carry. */
+      readonly confidence?: number;
     }
   // ─── Compression coordination (GH #119 + HS-128) ───
   // Curator-as-sole-prompt-author contract has advisors that RECOMMEND

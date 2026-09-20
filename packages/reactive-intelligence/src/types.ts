@@ -209,7 +209,7 @@ export type ControllerDecision =
    */
   | { readonly decision: "compress"; readonly sections: readonly string[]; readonly estimatedSavings: number }
   /** ✅ ACTIVE — fires on stagnant strategy / repeated failure. */
-  | { readonly decision: "switch-strategy"; readonly from: string; readonly to: string; readonly reason: string }
+  | { readonly decision: "switch-strategy"; readonly from: string; readonly to: string; readonly reason: string; readonly confidence?: number }
   /**
    * @experimental 🟡 UNFIRED — handler registered (`tempAdjustHandler`).
    * Corpus expansion needed for entropy-driven temperature adjustment scenarios.
@@ -306,6 +306,24 @@ export type ControllerEvalParams = {
    * own output bookkeeping).
    */
   readonly hasUserOutput?: boolean;
+  /**
+   * Kernel-side loop evidence. The kernel's repeated-identical-failure streak
+   * counter is the single trigger authority for "the agent is stuck"; this
+   * evaluator only escalates a stall the kernel has already acted on.
+   *
+   * `redirectsIssued` is the kernel's `failureRecoveryRedirects` counter (reset
+   * across strategy switches). When omitted, `evaluateStrategySwitch` fails
+   * CLOSED (no switch) — a caller that has not been updated to plumb this must
+   * not silently fall back to the old independent-trigger behavior, which is
+   * exactly the RC-3 double-detector defect this field exists to close.
+   *
+   * Scope note: `failureRecoveryRedirects` only increments on unresolved TOOL
+   * failure recovery (`recovery.failedUnresolved.length > 0` in
+   * iterate-pass.ts / loop-resolution.ts / stall-deliverable.ts) — this
+   * evaluator is therefore unreachable for thought-only loops, or for tool
+   * calls that succeed but return unproductive results.
+   */
+  readonly kernelLoopSignal?: { readonly redirectsIssued: number };
   /**
    * Operational model tier — drives tier-gated evaluator thresholds (e.g.
    * stall-detect's STALL_WINDOW_BY_TIER: local=2, mid=3, large=4, frontier=5).

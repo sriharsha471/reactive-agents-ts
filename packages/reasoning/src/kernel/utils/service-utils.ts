@@ -83,6 +83,11 @@ type ReactiveControllerInstance = {
     /** Mirrors reactive-intelligence/src/types.ts ControllerEvalParams.hasUnconsumedStoredEvidence
      *  (2026-08-15 root fix) — true when a compressed tool result's storedKey was never recalled. */
     readonly hasUnconsumedStoredEvidence?: boolean;
+    /** Mirrors reactive-intelligence/src/types.ts ControllerEvalParams.kernelLoopSignal
+     *  (RC-3 fix) — the kernel's `failureRecoveryRedirects` count. The kernel is the sole
+     *  loop-stuck trigger authority; RI's strategy-switch only escalates a stall the kernel
+     *  already redirected on. Omitted → RI fails closed (no switch). */
+    readonly kernelLoopSignal?: { readonly redirectsIssued: number };
   }) => Effect.Effect<readonly { readonly decision: string; readonly reason: string }[]>;
 };
 

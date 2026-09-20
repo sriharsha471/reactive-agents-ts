@@ -1,4 +1,4 @@
-import type { TrustReceipt } from "@reactive-agents/core";
+import type { TrustReceipt, TerminatedBy } from "@reactive-agents/core";
 import type { AgentResultMetadata } from "./builder.js";
 
 /** How many event types the stream emits.
@@ -57,6 +57,12 @@ export type AgentStreamEvent =
        * NOT a truth certificate — see `TrustReceipt` in `@reactive-agents/core`.
        */
       readonly receipt?: TrustReceipt;
+      /** Same as `AgentResult.success`. Optional for backward compatibility. */
+      readonly success?: boolean;
+      /** Same as `AgentResult.terminatedBy`. */
+      readonly terminatedBy?: TerminatedBy;
+      /** Same as `AgentResult.goalAchieved`. */
+      readonly goalAchieved?: boolean | null;
     }
   | {
       /** Execution failed. Last event on a failed stream. */

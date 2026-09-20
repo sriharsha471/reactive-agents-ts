@@ -342,7 +342,13 @@ export type {
   RunEnvelopeRails,
   BuildRunEnvelopeOptions,
 } from "./kernel/envelope/run-envelope.js";
-export { META_TOOLS, INTROSPECTION_META_TOOLS, HARNESS_PSEUDO_TOOLS } from "./kernel/state/kernel-constants.js";
+export {
+  META_TOOLS,
+  INTROSPECTION_META_TOOLS,
+  HARNESS_PSEUDO_TOOLS,
+  KERNEL_INLINE_ENTROPY_STRATEGIES,
+  scoresEntropyInline,
+} from "./kernel/state/kernel-constants.js";
 // ─── HarnessConfig — the typed per-agent harness control surface (W3) ───
 export { resolveHarnessConfig, defaultResolvedHarness, fromDisclosureMode } from "./harness-config.js";
 export type { HarnessConfig, ResolvedHarness, ToolDisclosureMode } from "./harness-config.js";
@@ -468,11 +474,8 @@ export {
   verboseRulesEnabled,
   recencyBudgetCharsOverride,
   toolResultBudgetCharsOverride,
-  thoughtContinuityEnabled,
-  toolObserveSymmetryEnabled,
   rationaleAuditEnabled,
   treeOfThoughtExploreBudgetMs,
   assemblyDebugEnabled,
   promptDumpPathPrefix,
-  overhaulEnabled,
 } from "./harness-flags.js";

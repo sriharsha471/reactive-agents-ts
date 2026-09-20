@@ -2,6 +2,18 @@ import { createHash } from "node:crypto";
 import { renderValue, describeShape, type ResultFormat } from "@reactive-agents/tools";
 import { renderRecallHint } from "./ref-grammar.js";
 
+const WRITE_BY_REF_TOOL = "write_result_to_file";
+
+/** True when the model's offered tool schemas include the by-reference writer. */
+export function offersWriteByRef(schemas: readonly unknown[]): boolean {
+  return schemas.some((s) => {
+    if (typeof s !== "object" || s === null) return false;
+    const flat = (s as { name?: unknown }).name;
+    const fn = (s as { function?: { name?: unknown } }).function?.name;
+    return flat === WRITE_BY_REF_TOOL || fn === WRITE_BY_REF_TOOL;
+  });
+}
+
 export interface StoredResult {
   readonly ref: string;
   readonly tool: string;
@@ -46,7 +58,7 @@ export class ResultStore {
     return this.map.has(ref);
   }
 
-  summarize(ref: string): string {
+  summarize(ref: string, opts?: { readonly writeByRef?: boolean }): string {
     const s = this.map.get(ref);
     if (!s) return `[unknown result_ref="${ref}"]`;
     // H2: for scratchpad-backed refs, advertise the READ path in the exact
@@ -55,9 +67,12 @@ export class ResultStore {
     // write_result_to_file, the gate never saw its marker on the canonical
     // assembly path, and the stored-evidence read path was structurally dead.
     const readHint = s.recallable ? ` Re-read the full data with ${renderRecallHint(ref, "full")}.` : "";
+    const actHint = opts?.writeByRef
+      ? ` act on it by reference (e.g. ${WRITE_BY_REF_TOOL}(result_ref="${ref}", path)).`
+      : "";
     return (
       `${s.tool} result stored as result_ref="${ref}" (${describeShape(s.value)}). ` +
-      `Full data held system-side; act on it by reference (e.g. write_result_to_file(result_ref="${ref}", path)). Do not retype it.${readHint}`
+      `Full data held system-side;${actHint} Do not retype it.${readHint}`
     );
   }
 
@@ -85,23 +100,26 @@ export class ResultStore {
    * about what was dropped AND recoverable/actionable by reference. Content that
    * fits the budget is returned in full with no marker noise.
    */
-  preview(ref: string, budgetChars: number): string {
+  preview(ref: string, budgetChars: number, opts?: { readonly writeByRef?: boolean }): string {
     const s = this.map.get(ref);
     if (!s) return `[unknown result_ref="${ref}"]`;
     // compact: this is the model's REASONING view — drop navigation/metadata
     // noise (author.*_url ×15/record on GitHub shapes) so the budget is spent on
     // selection-criteria fields, not URLs. The full untouched data stays
-    // recoverable via `write_result_to_file(result_ref)` / recall, and
+    // recoverable via recall, or `write_result_to_file` when offered, and
     // `materialize()` (the actual file deliverable) still renders byte-complete.
     const fullText = renderValue(s.value, "bullets", { compact: true });
     if (fullText.length <= budgetChars) return fullText;
 
     // H2: recall read-hint in the gate-matched vocabulary (see summarize()).
     const readHint = s.recallable ? ` Re-read any section with ${renderRecallHint(ref, "segment")}.` : "";
+    const actHint = opts?.writeByRef
+      ? `act on the complete data by reference (e.g. ${WRITE_BY_REF_TOOL}(result_ref="${ref}", path)). `
+      : "";
     const footer =
       `\n\n[content truncated — ${fullText.length} chars total; full data held ` +
       `system-side as result_ref="${ref}". Summarize from the sections shown above; ` +
-      `act on the complete data by reference (e.g. write_result_to_file(result_ref="${ref}", path)). ` +
+      actHint +
       `Do not retype it.${readHint}]`;
     const body = Math.max(0, budgetChars - footer.length);
 

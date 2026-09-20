@@ -18,12 +18,11 @@ export const HarnessConfigSchema = Schema.Struct({
   verboseRules: Schema.optional(Schema.Boolean),
   recencyBudgetChars: Schema.optional(Schema.Number),
   toolResultBudgetChars: Schema.optional(Schema.Number),
-  thoughtContinuity: Schema.optional(Schema.Boolean),
-  toolObserveSymmetry: Schema.optional(Schema.Boolean),
   auditRationale: Schema.optional(Schema.Boolean),
   treeOfThoughtExploreBudgetMs: Schema.optional(Schema.Number),
   assemblyDebug: Schema.optional(Schema.Boolean),
   promptDumpPathPrefix: Schema.optional(Schema.String),
+  numCtxPolicy: Schema.optional(Schema.Literal("fixed", "demand")),
 });
 
 export type HarnessConfigEncoded = typeof HarnessConfigSchema.Type;

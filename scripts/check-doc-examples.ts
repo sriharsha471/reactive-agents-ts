@@ -33,12 +33,15 @@ const SKIP_MARKER = "docs-skip-typecheck";
 // 2026-07-20, after deleting the orchestration cookbook blocks) → 250
 // (2026-07-21, fabricated-API docs fix: ToolBuilder/session/ContextProfile
 // blocks corrected to compile and un-skipped) → 249 (2026-07-21, entry-page
-// audit: your-first-agent testing block made self-contained and un-skipped).
+// audit: your-first-agent testing block made self-contained and un-skipped)
+// → 248 (2026-09-17, MCP OAuth docs task: 4 new OAuth example blocks added
+// as full compilable `const agent = await ReactiveAgents.create()...build()`
+// snippets instead of bare `.withMCP({...})` fragments, net -1 vs. baseline).
 // THE CEILING ONLY GOES DOWN:
 // when you un-skip blocks, lower this number to the new skip count. Never
 // raise it — adding a skip marker to dodge a failure is exactly the drift
 // this gate exists to stop.
-const SKIP_CEILING = 249;
+const SKIP_CEILING = 248;
 
 interface Block {
   sourceFile: string; // repo-relative

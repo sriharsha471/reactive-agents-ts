@@ -87,7 +87,9 @@ import {
  * stamps out a >10KB type display that slows the editor to a crawl.
  *
  * The pre-existing workaround was `Layer.merge(runtime, X) as any` at every
- * site (~33 across `createRuntime` + `createLightRuntime` + `A2aExtraLayer`).
+ * site (~33 across `createRuntime` + `createLightRuntime`; the historical
+ * count included the now-deleted `A2aExtraLayer` — see `ReactiveAgent
+ * .serveA2A()` for where A2A serving lives now).
  * `as any` is dishonest — every consumer downstream had to re-narrow.
  *
  * `ComposableLayer` is the single erasure boundary: `unknown` instead of
@@ -1006,11 +1008,6 @@ export const createRuntime = (options: RuntimeOptions) => {
   // ── Prompts (already constructed above; included only if enabled) ──
   const promptOptLayer = promptLayer ?? Layer.empty;
 
-  // ── A2A ──
-  const a2aOptLayer = options.enableA2A
-    ? A2aExtraLayer(options.agentId, options.a2aPort ?? 3000)
-    : Layer.empty;
-
   // ── Gateway — compose GatewayService + SchedulerService when enabled. ──
   // The persistent event loop itself starts via agent.start(); layer composition just makes
   // the services resolvable from the ManagedRuntime.
@@ -1113,7 +1110,6 @@ export const createRuntime = (options: RuntimeOptions) => {
       healthOptLayer,
       reactiveIntelOptLayer,
       promptOptLayer,
-      a2aOptLayer,
       gatewayOptLayer,
       extraOptLayer,
     ),
@@ -1448,54 +1444,9 @@ export const createLightRuntime = (options: LightRuntimeOptions) => {
   );
 };
 
-/**
- * Create the A2A (Agent-to-Agent) protocol server layer.
- *
- * Sets up an HTTP server that exposes the agent via JSON-RPC 2.0 for remote invocation.
- * The agent becomes discoverable via an Agent Card at `/.well-known/agent.json`.
- *
- * If the `@reactive-agents/a2a` package is not installed, returns an empty layer (graceful degradation).
- *
- * @param agentId - Agent identifier (used in the Agent Card)
- * @param port - HTTP port to listen on (e.g., 3000)
- * @returns A Layer that sets up the A2A server
- *
- * @internal Called internally by `createRuntime()` when `enableA2A: true`
- */
-const A2aExtraLayer = (
-  agentId: string,
-  port: number,
-): ComposableLayer => {
-  // Use dynamic import() so Bun's mock.module() can intercept it in tests.
-  // Layer.unwrapEffect lets us return a Layer from inside an async Effect.
-  // Single erasure cast at the wrap boundary — the inner promise returns
-  // dynamically-typed Layers (a2a package may be absent), so the union is
-  // collapsed to ComposableLayer once at the helper return.
-  return Layer.unwrapEffect(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Effect.promise<any>(async () => {
-      try {
-        const mod = (await import("@reactive-agents/a2a")) as {
-          createA2AServerLayer: (card: unknown, port: number) => Layer.Layer<unknown>;
-        };
-        const { createA2AServerLayer } = mod;
-        const agentCard = {
-          id: agentId,
-          name: agentId,
-          version: "0.5.0",
-          url: `http://localhost:${port}`,
-          provider: { organization: "Reactive Agents" },
-          capabilities: {
-            streaming: true,
-            pushNotifications: false,
-            stateTransitionHistory: false,
-          },
-        };
-        return createA2AServerLayer(agentCard, port);
-      } catch {
-        // A2A package not installed — return empty layer
-        return Layer.empty;
-      }
-    }),
-  );
-};
+// A2A serving moved off the layer-construction path — see
+// `ReactiveAgent.serveA2A()` in `reactive-agent.ts`. The layer this file used
+// to build here (`A2aExtraLayer`, removed) ran at `createRuntime()` time,
+// before the agent existed and before there was any executor to hand it, so
+// it could never bind a real port or reach a real run() — confirmed dead via
+// research, deleted rather than fixed in place (A2A repair plan, Task 2).

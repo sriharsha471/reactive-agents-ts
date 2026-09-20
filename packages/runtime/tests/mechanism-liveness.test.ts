@@ -17,6 +17,12 @@
 //
 // ── Watch the right channel, or you will call a live mechanism dead
 //
+// (Historical note: both flags named below were later measured by the
+// 2026-09-15 ablation and deleted — see
+// wiki/Decisions/2026-09-15-experimental-flag-verdicts.md. This section
+// documents a past debugging lesson about trace-channel blindness, not a
+// currently-live mechanism.)
+//
 // Building this, a census that looked only at trace event KINDS reported two of
 // these flags inert. Both were live:
 //
@@ -162,28 +168,10 @@ describe("no inert flags — every gated mechanism still does something", () => 
     expect(eager.promptChars).toBeGreaterThan(base.promptChars);
   }, 120_000);
 
-  it("RA_THOUGHT_CONTINUITY=1 replays the model's own reasoning", async () => {
-    // #38 in the debt register: "flag shipped, never measured". It is
-    // measurable now — a turn can finally carry both a thought and a tool call,
-    // which is what the mechanism needs to have anything to replay.
-    const base = await observe("thought-base", {});
-    const on = await observe("thought-on", { RA_THOUGHT_CONTINUITY: "1" });
-    expect(on.promptChars).toBeGreaterThan(base.promptChars);
-  }, 120_000);
-
   it("RA_RATIONALE_AUDIT=1 asks for a per-call rationale", async () => {
     const base = await observe("rationale-base", {});
     const on = await observe("rationale-on", { RA_RATIONALE_AUDIT: "1" });
     expect(on.promptChars).toBeGreaterThan(base.promptChars);
-  }, 120_000);
-
-  it("RA_TOOL_OBSERVE_SYMMETRY=1 attaches verification on the SINGLE path", async () => {
-    // Not a trace event — it lands on the observation STEP, which is why a
-    // kind-counting census called this one dead.
-    const base = await observe("symmetry-base", {});
-    const on = await observe("symmetry-on", { RA_TOOL_OBSERVE_SYMMETRY: "1" });
-    expect(base.verifiedObservations).toBe(0);
-    expect(on.verifiedObservations).toBeGreaterThan(0);
   }, 120_000);
 
   it("REACTIVE_AGENTS_EVIDENCE_DELTA_RESET=1 stops the low_delta misfire", async () => {

@@ -7,7 +7,7 @@ test("loads JSONL trace file and computes summary stats", async () => {
   await mkdir(dir, { recursive: true })
   const lines = [
     { kind: "run-started", runId: "r", timestamp: 1, iter: -1, seq: 0, task: "t", model: "m", provider: "p", config: {} },
-    { kind: "entropy-scored", runId: "r", timestamp: 2, iter: 0, seq: 1, composite: 0.7, sources: { token: 0, structural: 0, semantic: 0, behavioral: 0, contextPressure: 0 } },
+    { kind: "entropy-scored", runId: "r", timestamp: 2, iter: 0, seq: 1, composite: 0.7, sources: { token: 0, structural: 0, semantic: 0, behavioral: 0, contextPressure: 0 }, sourcesPresent: 4, confidence: "high", trajectoryShape: "flat", modelTier: "frontier" },
     { kind: "intervention-dispatched", runId: "r", timestamp: 3, iter: 0, seq: 2, decisionType: "early-stop", patchKind: "early-stop", cost: { tokensEstimated: 0, latencyMsEstimated: 0 }, telemetry: {} },
     { kind: "run-completed", runId: "r", timestamp: 4, iter: 0, seq: 3, status: "success", totalTokens: 10, totalCostUsd: 0, durationMs: 3 },
   ]

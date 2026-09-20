@@ -69,10 +69,19 @@ import { assembleConversation } from "./conversation-assembly.js";
 import { checkToolCall, defaultGuards } from "./guard.js";
 import { META_TOOLS, INTROSPECTION_META_TOOLS } from "../../../kernel/state/kernel-constants.js";
 import { emitErrorSwallowed, errorTag, type KernelMessageLike } from "@reactive-agents/core";
-import { resolveHarnessConfig } from "../../../harness-config.js";
 
-/** Tool names that operate on the filesystem — HealingPipeline will resolve relative paths. */
-const FILE_TOOL_NAMES = new Set(["file-read", "file-write", "code-execute", "shell-execute"]);
+/**
+ * Tool names that operate on the filesystem — HealingPipeline will resolve relative paths.
+ * Exported so `strategies/plan-execute/step-executor.ts` can share this single definition
+ * instead of maintaining a byte-identical copy.
+ */
+export const FILE_TOOL_NAMES = new Set([
+  "file-read",
+  "file-write",
+  "file-edit",
+  "code-execute",
+  "shell-execute",
+]);
 
 /** Extract the text content of the last assistant message from the conversation history. */
 function getLastAssistantText(messages: readonly KernelMessage[]): string {
@@ -147,7 +156,6 @@ export function handleActing(
 ): Effect.Effect<KernelState, never, LLMService> {
   return Effect.gen(function* () {
     const { input, profile, compression, toolService, hooks } = context;
-    const h = input.harness ?? resolveHarnessConfig();
     // profileOverrides were already merged into `profile` by kernel-runner;
     // here we only need the adapter.
     const { adapter } = selectAdapter({ supportsToolCalling: true }, profile.tier, input.modelId);
@@ -160,14 +168,6 @@ export function handleActing(
     const obsMode = input.observationSummary;
     const shouldExtract = obsMode === true
       || (obsMode !== false && (profile.tier === "local" || profile.tier === "mid"));
-
-    // Phase E (E2) — single/batch observation symmetry. Default OFF: the single
-    // path stays byte-identical (no verification, no semantic-memory write). When
-    // RA_TOOL_OBSERVE_SYMMETRY=1, the single path also attaches a VerificationResult
-    // (sync + pure) and forks the daemon semantic-memory store — matching the batch
-    // path. This is a HOT-PATH behavior change, gated so it can be benched live
-    // before any default-on decision (project lift rule + no-metric-gaming doctrine).
-    const symmetry = h.toolObserveSymmetry;
 
     // ── ACTING BRANCH ──────────────────────────────────────────────────────────
     // For text-parse mode: extract tool calls from the last assistant message text
@@ -900,21 +900,13 @@ export function handleActing(
             emitLog,
             // emitToolCallEvents stays FALSE — hooks.onAction/onObservation emit
             // ToolCall* events for the kernel path.
-            // Phase E (E2) — gated single/batch symmetry. When unset, these three
-            // are OMITTED → byte-identical to the pre-Phase-E single path (no
-            // verification, no memory write). When set, the single path matches
-            // the batch path (verifier-attaching + memory-storing).
-            ...(symmetry
-              ? {
-                  verifier: defaultVerifier,
-                  verifierContext: {
-                    task: input.task,
-                    priorSteps: allSteps,
-                    ...(input.requiredTools ? { requiredTools: input.requiredTools } : {}),
-                    toolsUsed: newToolsUsed,
-                  },
-                }
-              : {}),
+            //
+            // The single-call path never attaches a verifier or writes memory
+            // (unlike the batch path just above) — this was previously gated
+            // behind RA_TOOL_OBSERVE_SYMMETRY, an experimental single/batch
+            // symmetry mechanism the 2026-09-15 ablation found INERT with no
+            // accuracy lift and a large (+56.5%) live token cost; verdict
+            // DELETE (wiki/Decisions/2026-09-15-experimental-flag-verdicts.md).
           },
         );
 

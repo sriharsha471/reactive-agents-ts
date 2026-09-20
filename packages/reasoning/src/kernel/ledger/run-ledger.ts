@@ -149,8 +149,11 @@ export interface HarnessSignalEntry extends LedgerEntryBase {
 }
 
 /**
- * A strategy switch carried context forward. Typed NOW; RENDERED by the
- * Projector in Wave D (audit 03-F5 — carried context currently never renders).
+ * A strategy switch carried context forward. Rendered by the standing frame
+ * (`standing-frame.ts`) and protected by compaction (`compaction.ts`). Minted
+ * by `applyStrategySwitch` via `recordHandoff` (`kernel/ledger/emit.ts`) on
+ * every strategy switch (2026-09-15, wire-or-delete-hardening-wave Task 5) —
+ * replaces the earlier string-fold of the handoff into `priorContext`.
  */
 export interface HandoffEntry extends LedgerEntryBase {
   readonly kind: "handoff";

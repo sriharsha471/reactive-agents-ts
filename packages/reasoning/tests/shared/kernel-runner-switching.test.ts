@@ -153,14 +153,15 @@ describe("Strategy switching — fallbackStrategy (no LLM evaluator)", () => {
     expect(result.strategy).toBe("plan-execute-reflect");
   });
 
-  it("carries priorContext into the new strategy input after switch", async () => {
-    let capturedPriorContext: string | undefined;
+  it("carries the handoff onto the ledger as a typed fact after switch", async () => {
+    let capturedLedger: KernelState["ledger"];
     let switchedCallIteration = 0;
 
     const contextCapturingKernel: ThoughtKernel = (state, ctx) => {
       if (state.strategy === "plan-execute-reflect") {
-        // Fresh state after switch — capture priorContext
-        capturedPriorContext = ctx.input.priorContext;
+        // Fresh state after switch — capture the ledger (the handoff carrier;
+        // audit 03-F5 — priorContext is left untouched by the switch now).
+        capturedLedger = state.ledger;
         switchedCallIteration = state.iteration;
         return Effect.succeed(
           transitionState(state, {
@@ -198,9 +199,13 @@ describe("Strategy switching — fallbackStrategy (no LLM evaluator)", () => {
       }).pipe(Effect.provide(testLayer)),
     );
 
-    // priorContext should include handoff info
-    expect(capturedPriorContext).toBeDefined();
-    expect(capturedPriorContext).toContain("Strategy Switch Handoff");
+    // The handoff is a typed ledger fact now, not string-folded into priorContext.
+    const handoffs = (capturedLedger ?? []).filter((e) => e.kind === "handoff");
+    expect(handoffs).toHaveLength(1);
+    const h = handoffs[0]!;
+    if (h.kind !== "handoff") throw new Error("narrow");
+    expect(h.from).toBe("reactive");
+    expect(h.to).toBe("plan-execute-reflect");
   });
 
   it("after maxSwitches exhausted, transitions to failed", async () => {

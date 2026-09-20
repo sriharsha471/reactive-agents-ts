@@ -947,6 +947,12 @@ export function runIterationPass(
       // ── Entropy scoring + Reactive Controller evaluation ────────────────
       ({ state, prevStepCount } = yield* runReactiveObserver(
         state, services, eventBus, prevStepCount, currentOptions, profile.tier, effectiveInput.harnessPipeline,
+        // RC-3 — the kernel's repeated-identical-failure redirect streak is the
+        // single loop-stuck trigger authority. This observer runs BEFORE this
+        // pass's F3 redirect block, so RI sees the count as of the kernel's last
+        // committed redirect and can only escalate a stall the kernel already
+        // acted on (previously both fired independently, one iteration apart).
+        failureRecoveryRedirects,
       ));
 
       // Honor early-stop dispatched by the intervention dispatcher.

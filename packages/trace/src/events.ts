@@ -102,6 +102,8 @@ export interface RunCompletedEvent extends TraceEventBase {
   /** True iff `output` was clipped to the publisher's 64KB cap. */
   readonly outputTruncated?: boolean
   readonly error?: string
+  /** Raw termination reason (AgentCompleted.terminationReason) — e.g. "abstained", "max-iterations:5". */
+  readonly terminatedBy?: string
   readonly totalTokens: number
   readonly totalCostUsd: number
   readonly durationMs: number
@@ -121,12 +123,25 @@ export interface EntropyScoredEvent extends TraceEventBase {
   readonly kind: "entropy-scored"
   readonly composite: number
   readonly sources: {
-    readonly token: number
+    /** null = source structurally unavailable (e.g. no logprobs on Ollama), not a measured zero. */
+    readonly token: number | null
     readonly structural: number
-    readonly semantic: number
+    /** null = no embedding available or no prior thought to compare against. */
+    readonly semantic: number | null
     readonly behavioral: number
     readonly contextPressure: number
   }
+  /**
+   * Count of non-null sources, 2-4 (excludes contextPressure, which is
+   * structurally never null — matches the sensor's own confidence-driving
+   * count in composite.ts). Below 4 means the composite is a partial signal.
+   */
+  readonly sourcesPresent: number
+  /** Sensor's own self-assessment. "low" on short runs and degraded-source runs. */
+  readonly confidence: "high" | "medium" | "low"
+  /** EntropyTrajectory.shape, or "unknown" when no trajectory was supplied. */
+  readonly trajectoryShape: string
+  readonly modelTier: "frontier" | "local" | "unknown"
 }
 
 export interface DecisionEvaluatedEvent extends TraceEventBase {
@@ -481,7 +496,7 @@ const REQUIRED_FIELDS_BY_KIND: Readonly<Record<TraceEvent["kind"], readonly stri
   "phase-exit": ["phase"],
   "iteration-enter": [],
   "iteration-exit": [],
-  "entropy-scored": ["composite", "sources"],
+  "entropy-scored": ["composite", "sources", "sourcesPresent", "confidence"],
   "decision-evaluated": ["decisionType", "confidence", "reason"],
   "intervention-dispatched": ["decisionType", "patchKind", "cost", "telemetry"],
   "intervention-suppressed": ["decisionType", "reason"],

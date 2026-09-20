@@ -32,7 +32,7 @@ import type { EbLike } from "./runtime-context.js";
 import { RunStoreLive, RunStoreService, durableConfigHash } from "../services/run-store.js";
 import { installDurableCheckpointing } from "../run-controller.js";
 import { deriveReceiptModelId } from "../builder/helpers.js";
-import { deriveTaskOutcome } from "./finalize/derive-outcome.js";
+import { deriveTaskOutcome, deriveMetadataToolCalls } from "./finalize/derive-outcome.js";
 import { resolveReceiptSigningKey, signReceipt } from "../receipt-signing.js";
 import type { TrustReceipt } from "@reactive-agents/core";
 
@@ -554,20 +554,67 @@ export const makeExecuteStream =
           const streamAbstention = projectAbstention(
             taskResult as { terminatedBy?: TerminatedBy; abstention?: { reason: string; missing: readonly string[] } },
           );
+          // SUPPRESSED on pause paths (awaiting-approval / awaiting-interaction):
+          // receipts/goalAchieved belong to terminal results only — a paused
+          // run is unfinished, and the resumed run emits its own outcome on
+          // completion. Detected on the RAW awaiting descriptors (not the
+          // durable-gated `paused` flags) so a pause never grades, durable or
+          // not. Mirrors the suppression in reactive-agent.ts.
+          const isPausedRun = gate !== undefined || interaction !== undefined;
+          // Single terminal-outcome computation (FM-4 part 1, extended task 4
+          // of the wire-or-delete hardening wave) — shared with
+          // reactive-agent.ts's run() path via deriveTaskOutcome
+          // (finalize/derive-outcome.ts), so the two paths cannot silently
+          // diverge on deliverables, goalAchieved, toolCalls, or the trust
+          // receipt. Hoisted here (was previously computed twice-removed,
+          // just for the receipt) so `goalAchieved` on StreamCompleted reads
+          // the SAME computation the receipt's verdict is derived from.
+          const outcome = isPausedRun
+            ? undefined
+            : deriveTaskOutcome(taskResult, {
+                task: String((task.input as { question?: unknown })?.question ?? task.id),
+                ...(config.requiredTools?.tools ? { requiredTools: config.requiredTools.tools } : {}),
+                ...(config.taskContract !== undefined ? { taskContract: config.taskContract } : {}),
+                // Single shared source with the non-streaming site — see
+                // deriveReceiptModelId's JSDoc (builder/helpers.ts).
+                modelId: deriveReceiptModelId(config.defaultModel, config.provider),
+                now: Date.now(),
+              });
+          const baseMetadata: AgentResultMetadata =
+            ((taskResult as { metadata?: AgentResultMetadata }).metadata) ?? {
+              duration: Date.now() - startMs,
+              cost: 0,
+              tokensUsed: 0,
+              stepsCount: 0,
+            };
+          // Same projection `reactive-agent.ts`'s run() applies to
+          // AgentResultMetadata.toolCalls — the stream path never derived
+          // this before (task 4, wire-or-delete hardening wave), so a
+          // streamed tool-loop run collected with `metadata.toolCalls`
+          // undefined even though tools ran.
+          const derivedStreamToolCalls = deriveMetadataToolCalls(
+            (baseMetadata as { reasoningSteps?: ReadonlyArray<{ type: string; metadata?: Record<string, unknown> }> })
+              .reasoningSteps,
+          );
+          const streamMetadata: AgentResultMetadata =
+            derivedStreamToolCalls.length > 0 ? { ...baseMetadata, toolCalls: derivedStreamToolCalls } : baseMetadata;
           const completedEvent: StreamCompletedEvent = {
             _tag: "StreamCompleted",
             output: String((taskResult as { output?: unknown }).output ?? ""),
-            metadata:
-              ((taskResult as { metadata?: AgentResultMetadata }).metadata) ?? {
-                duration: Date.now() - startMs,
-                cost: 0,
-                tokensUsed: 0,
-                stepsCount: 0,
-              },
+            metadata: streamMetadata,
             ...(streamAbstention !== undefined ? { abstention: streamAbstention } : {}),
             taskId: String(task.id),
             agentId: String(task.agentId),
             ...(toolSummary.length > 0 ? { toolSummary } : {}),
+            // Same field, same source, as AgentResult.success — see
+            // reactive-agent.ts:1636 (`success: r.success`).
+            success: Boolean((taskResult as { success?: unknown }).success),
+            ...((taskResult as { terminatedBy?: TerminatedBy }).terminatedBy !== undefined
+              ? { terminatedBy: (taskResult as { terminatedBy?: TerminatedBy }).terminatedBy }
+              : {}),
+            // `null` (not omitted) on a paused run, matching
+            // `AgentResult.goalAchieved`'s always-present field on run().
+            goalAchieved: outcome?.goalAchieved ?? null,
             // Agentic-UI kit (Task 13): stamp the durable runId on EVERY durable
             // StreamCompleted (not just paused ones) so endpoint consumers can
             // attach/replay a completed run by its id. Backward-compatible: the
@@ -598,46 +645,27 @@ export const makeExecuteStream =
               : {}),
           };
           // Trust receipt (Arc 1 Task 8) — graded evidence about HOW the
-          // answer was produced, computed from this same in-memory taskResult
-          // (works without tracing). The FULL receipt is attached to
-          // `StreamCompleted.receipt` (Task 8 closure — streamed runs are
-          // runs; `AgentStream.collect()` reconstructs `AgentResult.receipt`
-          // from it), and a lean `TrustEvent` {verdict, confidence} is still
-          // emitted before it for progress consumers. NOT a truth certificate
-          // — see TrustReceipt's JSDoc in @reactive-agents/core.
+          // answer was produced, read off the SAME `outcome` computed above
+          // (hoisted so `goalAchieved` and the receipt can never disagree —
+          // task 4, wire-or-delete hardening wave). The FULL receipt is
+          // attached to `StreamCompleted.receipt` (Task 8 closure — streamed
+          // runs are runs; `AgentStream.collect()` reconstructs
+          // `AgentResult.receipt` from it), and a lean `TrustEvent`
+          // {verdict, confidence} is still emitted before it for progress
+          // consumers. NOT a truth certificate — see TrustReceipt's JSDoc in
+          // @reactive-agents/core.
           //
-          // SUPPRESSED on pause paths (awaiting-approval / awaiting-interaction):
-          // receipts belong to terminal results only — a paused run is
-          // unfinished, and the resumed run emits its own receipt on
-          // completion. Detected on the RAW awaiting descriptors (not the
-          // durable-gated `paused` flags) so a pause never grades, durable or
-          // not. Mirrors the receipt suppression in reactive-agent.ts.
+          // SUPPRESSED on pause paths (`outcome` is `undefined` there —
+          // see `isPausedRun` above): receipts belong to terminal results
+          // only — a paused run is unfinished, and the resumed run emits its
+          // own receipt on completion. Mirrors the receipt suppression in
+          // reactive-agent.ts.
           //
           // SIGNED (Arc 1 Task 9) when a signing key is configured — same
           // Ed25519 wiring as the non-stream site (reactive-agent.ts
           // buildRunTaskEffect's signing step): signing failure degrades to
           // the unsigned receipt and must NEVER fail the stream.
-          const isPausedRun = gate !== undefined || interaction !== undefined;
-          // Single terminal-outcome computation (FM-4 part 1) — shared with
-          // reactive-agent.ts's run() path via deriveTaskOutcome
-          // (finalize/derive-outcome.ts), so the two paths cannot silently
-          // diverge on deliverables, goalAchieved, or the trust receipt.
-          // SUPPRESSED on pause paths (awaiting-approval / awaiting-
-          // interaction): receipts belong to terminal results only — a
-          // paused run is unfinished, and the resumed run emits its own
-          // receipt on completion. Mirrors the receipt suppression in
-          // reactive-agent.ts.
-          const unsignedReceipt: TrustReceipt | undefined = isPausedRun
-            ? undefined
-            : deriveTaskOutcome(taskResult, {
-                task: String((task.input as { question?: unknown })?.question ?? task.id),
-                ...(config.requiredTools?.tools ? { requiredTools: config.requiredTools.tools } : {}),
-                ...(config.taskContract !== undefined ? { taskContract: config.taskContract } : {}),
-                // Single shared source with the non-streaming site — see
-                // deriveReceiptModelId's JSDoc (builder/helpers.ts).
-                modelId: deriveReceiptModelId(config.defaultModel, config.provider),
-                now: Date.now(),
-              }).receipt;
+          const unsignedReceipt: TrustReceipt | undefined = outcome?.receipt;
           const signingKey = unsignedReceipt !== undefined
             ? resolveReceiptSigningKey(config.receiptSigningKey)
             : undefined;

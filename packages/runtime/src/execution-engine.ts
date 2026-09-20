@@ -23,7 +23,13 @@ import {
 import type { Task, TaskResult, TerminatedBy } from "@reactive-agents/core";
 import type { TaskError } from "@reactive-agents/core";
 import type { ContextProfile } from "@reactive-agents/reasoning";
-import { classifyToolRelevance, filterToolsByRelevance, ReasoningService, VERIFIER_REJECTION_PREFIX, VERIFIER_ESCALATION_PREFIX } from "@reactive-agents/reasoning";
+import {
+  classifyToolRelevance,
+  filterToolsByRelevance,
+  ReasoningService,
+  VERIFIER_REJECTION_PREFIX,
+  VERIFIER_ESCALATION_PREFIX,
+} from "@reactive-agents/reasoning";
 import {
   BUILTIN_TOOL_NAMES,
   buildFinalAnswerDescription,
@@ -33,6 +39,7 @@ import { extractOutputFormat } from "@reactive-agents/reasoning";
 import { ObservabilityService, ChildDashboardRegistry, renderCalibrationProvenance, ObservableLogger, makeObservableLogger, makeStatusRenderer, effectLoggerBridgeLayer, makeNoticesManager, NOTICE_IDS } from "@reactive-agents/observability";
 import { GuardrailService, KillSwitchService, BehavioralContractService } from "@reactive-agents/guardrails";
 import { EventBus, EntropySensorService } from "@reactive-agents/core";
+import { scoresEntropyInline } from "@reactive-agents/core";
 import type { AgentEvent, KernelStateLike } from "@reactive-agents/core";
 import { type AgentDebrief } from "./debrief.js";
 import { PlanStoreService, ProceduralMemoryService } from "@reactive-agents/memory";
@@ -398,6 +405,10 @@ export const ExecutionEngineLive = (config: ReactiveAgentsConfig) =>
                 yield* eb.on("ReasoningStepCompleted", (event) =>
                   Effect.gen(function* () {
                     if (!event.thought) return;
+                    // Kernel-runner strategies already score in
+                    // runReactiveObserver. Scoring their hook event again
+                    // corrupts the shared trajectory with a second step index.
+                    if (scoresEntropyInline(event.strategy)) return;
                     const dedupKey = `${event.taskId}:${event.step}`;
                     if (scoredPairs.has(dedupKey)) return;
 

@@ -70,6 +70,30 @@ export type ContextPressureLike = {
   readonly compressionHeadroom: number;
 };
 
+// ─── Entropy scoring coverage ───
+
+/**
+ * Strategies whose thoughts the kernel scores inline (runReactiveObserver).
+ *
+ * Lives in core (not reasoning) so both the runtime engine's event-driven
+ * collector and reactive-intelligence's subscriber can consult it without a
+ * cross-package dependency cycle. Keep in sync with the strategies that
+ * traverse the kernel iterate-pass.
+ */
+export const KERNEL_INLINE_ENTROPY_STRATEGIES = new Set([
+  "direct",
+  "reactive",
+  "react",
+  "reflexion",
+  "tree-of-thought",
+  "plan-execute-reflect",
+]) as ReadonlySet<string>;
+
+/** Whether a strategy already has kernel-side entropy scoring. */
+export function scoresEntropyInline(strategy: string): boolean {
+  return KERNEL_INLINE_ENTROPY_STRATEGIES.has(strategy);
+}
+
 export class EntropySensorService extends Context.Tag("EntropySensorService")<
   EntropySensorService,
   {
@@ -80,6 +104,7 @@ export class EntropySensorService extends Context.Tag("EntropySensorService")<
       iteration: number;
       maxIterations: number;
       modelId: string;
+      providerName?: string;
       temperature: number;
       priorThought?: string;
       logprobs?: readonly TokenLogprobLike[];

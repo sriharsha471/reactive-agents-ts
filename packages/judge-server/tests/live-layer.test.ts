@@ -1,10 +1,11 @@
 // Run: bun test packages/judge-server/tests/live-layer.test.ts --timeout 15000
 import { describe, it, expect, afterAll } from "bun:test";
 
-// Mitigation per advisor guidance: @reactive-agents/llm-provider's `llmConfigFromEnv`
-// reads process.env at module load time. Provide a dummy key so importing the
-// package doesn't blow up in CI/dev environments without real credentials.
-// The live Layer is constructed lazily — no real API call happens in this test.
+// @reactive-agents/llm-provider's `LLMConfigFromEnv` now reads process.env
+// lazily at layer-build time (D-2026-09-08-O), not at module import — so this
+// dummy key is no longer masking an import-time snapshot bug. It's kept
+// because the live Layer still needs *some* key present to construct without
+// erroring; no real API call happens in this test.
 process.env.ANTHROPIC_API_KEY ??= "sk-test-dummy";
 
 let server: { stop: (force?: boolean) => void; port: number; activeLayer: "stub" | "live" } | undefined;

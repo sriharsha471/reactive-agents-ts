@@ -9,15 +9,15 @@
 
 import { describe, it, expect, afterEach } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const SCRIPT = new URL("../../../../../scripts/check-orphans.sh", import.meta.url).pathname;
 
-function runGuard(searchDir: string, ledgerFile: string): { code: number; out: string } {
+function runGuard(searchDir: string, ledgerFile: string, script: string = SCRIPT): { code: number; out: string } {
   try {
-    const out = execFileSync("bash", [SCRIPT, searchDir, ledgerFile], { encoding: "utf8" });
+    const out = execFileSync("bash", [script, searchDir, ledgerFile], { encoding: "utf8" });
     return { code: 0, out };
   } catch (e) {
     const err = e as { status?: number; stdout?: Buffer | string; stderr?: Buffer | string };
@@ -26,6 +26,26 @@ function runGuard(searchDir: string, ledgerFile: string): { code: number; out: s
       out: `${err.stdout ?? ""}${err.stderr ?? ""}`,
     };
   }
+}
+
+/**
+ * The real `ORPHAN_BASELINE` is empty (2026-09-15: `handoff`, its sole prior
+ * entry, gained a writer — Task 5, wire-or-delete-hardening-wave). The
+ * ratchet-tolerance behavior it implements is still live code, so these two
+ * tests drive it against a scratch COPY of the script with a fixture-only
+ * baseline entry, rather than depending on production ever having one.
+ */
+function scriptWithBaseline(baselineKinds: readonly string[]): string {
+  const original = readFileSync(SCRIPT, "utf8");
+  const patched = original.replace(
+    /ORPHAN_BASELINE=\([^)]*\)/,
+    `ORPHAN_BASELINE=(${baselineKinds.map((k) => `"${k}"`).join(" ")})`,
+  );
+  const dir = mkdtempSync(join(tmpdir(), "orphan-script-"));
+  dirs.push(dir);
+  const path = join(dir, "check-orphans.sh");
+  writeFileSync(path, patched);
+  return path;
 }
 
 const ledgerWith = (kinds: readonly string[]) =>
@@ -77,15 +97,17 @@ describe("check-orphans.sh — declaration-orphan guard", () => {
     expect(code).toBe(0);
   });
 
-  it("TOLERATES a baselined orphan (handoff) with no writer", () => {
-    const { dir, ledger } = fixture(["handoff", "alpha"], ["alpha"]); // handoff unwritten but baselined
-    const { code } = runGuard(dir, ledger);
+  it("TOLERATES a baselined orphan with no writer", () => {
+    const script = scriptWithBaseline(["fixture-orphan"]);
+    const { dir, ledger } = fixture(["fixture-orphan", "alpha"], ["alpha"]); // fixture-orphan unwritten but baselined
+    const { code } = runGuard(dir, ledger, script);
     expect(code).toBe(0);
   });
 
   it("FAILS when a baselined kind GAINS a writer (ratchet — must be removed from baseline)", () => {
-    const { dir, ledger } = fixture(["handoff", "alpha"], ["alpha", "handoff"]); // handoff now written
-    const { code, out } = runGuard(dir, ledger);
+    const script = scriptWithBaseline(["fixture-orphan"]);
+    const { dir, ledger } = fixture(["fixture-orphan", "alpha"], ["alpha", "fixture-orphan"]); // now written
+    const { code, out } = runGuard(dir, ledger, script);
     expect(code).toBe(1);
     expect(out).toContain("remove from ORPHAN_BASELINE");
   });

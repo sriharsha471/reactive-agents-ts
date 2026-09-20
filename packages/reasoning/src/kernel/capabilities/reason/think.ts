@@ -13,7 +13,7 @@
 import { Effect, Stream, FiberRef, Either, Ref, Option } from "effect";
 import { discoveredToolsStoreRef } from "@reactive-agents/tools";
 import { ExecutionError } from "../../../errors/errors.js";
-import { LLMService, selectAdapter } from "@reactive-agents/llm-provider";
+import { LLMService, selectAdapter, estimateTokenCount } from "@reactive-agents/llm-provider";
 import { gatewayStream } from "../../llm-gateway.js";
 import { downshiftBudgetBand } from "../../assessment/pace-actions.js";
 import type { StopReason } from "@reactive-agents/llm-provider";
@@ -27,6 +27,7 @@ import { forbiddenTools } from "../../contract/run-contract.js";
 import { emitToolSurfaceResolved, emitProjectionRendered, emitCuratorDecision } from "../../utils/diagnostics.js";
 import type { LLMMessage } from "@reactive-agents/llm-provider";
 import { project } from "../../../assembly/project.js";
+import { nextNumCtx } from "../../../assembly/capability.js";
 import { fromKernelState } from "../../../assembly/from-kernel-state.js";
 import type { ContextProfile } from "../../../context/context-profile.js";
 import type { Projection } from "../../../assembly/project.js";
@@ -1015,6 +1016,36 @@ export function handleThinking(
       state.meta.horizonProfile === "long",
       state.meta.assessment,
     );
+
+    // D-2026-07-30-I: demand-driven num_ctx (opt-in). Only the local Ollama
+    // provider reads request.numCtx (local.ts resolveOllamaNumCtx — request
+    // wins over capability/config defaults), so this is a no-op elsewhere.
+    // Gated on `providerName === "ollama"`, NOT `profile.tier === "local"` —
+    // verified `tier: "local"` is also the generic capability FALLBACK for any
+    // unrecognized provider (capability.ts fallbackCapability) and the "test"
+    // stub's static entry, so tier alone would misfire on non-Ollama request
+    // paths. Output budget 2000 matches from-kernel-state.ts's resolveCapability
+    // call. Monotone within a run (never shrinks — Ollama reloads the model on
+    // any num_ctx change): grows from state.meta.numCtxHighWater, capped at
+    // profile.maxTokens (the model's context window ceiling).
+    const demandNumCtx =
+      h.numCtxPolicy === "demand" && input.providerName === "ollama"
+        ? nextNumCtx(
+            yield* estimateTokenCount([
+              { role: "system" as const, content: systemPromptWithDriver },
+              ...messagesForRequest,
+            ]),
+            2000,
+            state.meta.numCtxHighWater,
+            profile.maxTokens,
+          )
+        : undefined;
+    if (demandNumCtx !== undefined) {
+      state = transitionState(state, {
+        meta: { ...state.meta, numCtxHighWater: demandNumCtx },
+      });
+    }
+
     const llmStreamEffect = gatewayStream(llm, {
       purpose: "think",
       tier: profile.tier,
@@ -1032,6 +1063,7 @@ export function handleThinking(
       // (below the kernel) can key the LLMExchange trace to the real run instead
       // of the 'llm-direct'/0 placeholder. Build-time snapshot, FiberRef-free.
       traceContext: { taskId: state.taskId, iteration: state.iteration },
+      ...(demandNumCtx !== undefined ? { numCtx: demandNumCtx } : {}),
       // TextParseDriver: pass empty tools array — constrained providers (Anthropic/OpenAI)
       // enforce FC when tools are present, which breaks text-parse mode for local models.
       ...(llmTools.length > 0 && context.toolCallingDriver.mode !== "text-parse" ? { tools: llmTools } : {}),
@@ -1210,7 +1242,7 @@ export function handleThinking(
     // Store logprobs in entropy meta for the entropy sensor
     if (accumulatedLogprobs.length > 0) {
       const entropyMeta = state.meta.entropy ?? {};
-      state = transitionState(state, { meta: { ...state.meta, entropy: { ...entropyMeta, lastLogprobs: accumulatedLogprobs } } });
+      state = transitionState(state, { meta: { ...state.meta, entropy: { ...entropyMeta, lastLogprobs: accumulatedLogprobs, providerName: input.providerName } } });
     }
 
     // Build response shape matching original llm.complete() return

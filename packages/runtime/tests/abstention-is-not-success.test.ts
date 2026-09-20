@@ -24,6 +24,9 @@
 // The second cell is what stops this passing vacuously: a change that simply
 // reported failure everywhere would also satisfy the first.
 import { describe, it, expect } from "bun:test";
+import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ReactiveAgents } from "../src/builder.js";
 
 /** Forces the `requiredToolUnavailable` abstention trigger: a required tool that
@@ -80,5 +83,55 @@ describe("an abstention is not reported as a success", () => {
     const result = await runOrdinary();
 
     expect(result.success).toBe(true);
+  }, 20000);
+
+  // Task 3 (2026-09-14): run-completed carries the raw termination reason
+  // end-to-end. `totalCostUsd` is the sibling field on the same event, but the
+  // `test` provider always reports cost 0 (DEBT-REGISTER B3), so it can't be
+  // proven non-zero through this harness — that half is proven at the unit
+  // level only (packages/trace/tests/run-completed-truth.test.ts).
+  //
+  // RED-ON-CUT: delete the `totalCostUsd` spread in run-finalize.ts and this
+  // test is unaffected (it asserts terminatedBy, not cost) — deleting the
+  // `terminationReason` spread instead is what turns this cell red.
+  it("run-completed trace event carries terminatedBy for an abstained run", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ra-t3-terminated-by-"));
+
+    const agent = await ReactiveAgents.create()
+      .withName("abstain-trace")
+      .withProvider("test")
+      .withModel("test")
+      .withTestScenario([
+        { text: "I cannot ground this without the required tool." },
+        { text: "I cannot ground this without the required tool." },
+      ] as never)
+      .withTools({ builtins: [], adaptive: false } as never)
+      .withRequiredTools({ tools: ["tool-that-does-not-exist"] })
+      .withReasoning({ defaultStrategy: "reactive" })
+      .withMaxIterations(2)
+      .withObservability({ tracing: { dir } })
+      .build();
+
+    await agent.run("What is the population of the fictional city of Aetheria?");
+    await agent.dispose();
+
+    const names = await readdir(dir);
+    const rows: { kind?: string; terminatedBy?: string; totalCostUsd?: number }[] = [];
+    for (const name of names) {
+      if (!name.endsWith(".jsonl")) continue;
+      const text = await readFile(join(dir, name), "utf8");
+      for (const line of text.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        rows.push(JSON.parse(trimmed));
+      }
+    }
+
+    const runCompleted = rows.find((r) => r.kind === "run-completed");
+    expect(runCompleted).toBeDefined();
+    expect(runCompleted!.terminatedBy).toBe("abstained");
+    // Sibling field present and well-typed even though the test provider
+    // cannot exercise a non-zero value (see comment above).
+    expect(runCompleted!.totalCostUsd).toBe(0);
   }, 20000);
 });

@@ -1,0 +1,163 @@
+{
+  "generatedAt": "2026-09-15T13:32:59.792Z",
+  "runs": [],
+  "sessionId": "real-world-full",
+  "sessionVersion": "1.0.0",
+  "gitSha": "31c97ae8",
+  "ablation": [],
+  "taskReports": [
+    {
+      "taskId": "t1-js-typeof",
+      "modelVariantId": "claude-haiku-4-5-20251001",
+      "variantId": "ra-full",
+      "variantLabel": "RA Full Harness",
+      "runs": [
+        {
+          "runIndex": 0,
+          "dimensions": [
+            {
+              "dimension": "accuracy",
+              "score": 1
+            }
+          ],
+          "tokensUsed": 1837,
+          "durationMs": 2205.3266280000003,
+          "status": "pass",
+          "output": "Based on my knowledge of JavaScript, the output of `console.log(typeof null)` is:\n\n**object**",
+          "traceId": "01M2JMACXGGK8G1PTCPX1DKE5H",
+          "diagnosis": {
+            "honestyLabel": "honest-failure",
+            "honestyEvidence": "status=failure",
+            "failureModes": [],
+            "blindSpots": [
+              "intervention overlap-storms on real runs: ≤1 guard fired this run — too few to observe an overlap-storm (emitGuardFired is wired across the loop, not terminal-only)"
+            ]
+          },
+          "trust": "honest-failure",
+          "billedTokens": 1837,
+          "cacheReadTokens": 0
+        },
+        {
+          "runIndex": 1,
+          "dimensions": [
+            {
+              "dimension": "accuracy",
+              "score": 1
+            }
+          ],
+          "tokensUsed": 1858,
+          "durationMs": 3415.1627599999997,
+          "status": "pass",
+          "output": "Based on my knowledge of JavaScript, the output of `console.log(typeof null)` is:\n\n**object**\n\nThis is a well-known quirk in JavaScript where `typeof null` returns \"object\" instead of \"null\", even though `null` is a primitive value.",
+          "traceId": "01M2JMAF1GKW65NX1HCSHTWJHD",
+          "diagnosis": {
+            "honestyLabel": "honest-failure",
+            "honestyEvidence": "status=failure",
+            "failureModes": [],
+            "blindSpots": [
+              "intervention overlap-storms on real runs: ≤1 guard fired this run — too few to observe an overlap-storm (emitGuardFired is wired across the loop, not terminal-only)"
+            ]
+          },
+          "trust": "honest-failure",
+          "billedTokens": 1967,
+          "cacheReadTokens": 0
+        },
+        {
+          "runIndex": 2,
+          "dimensions": [
+            {
+              "dimension": "accuracy",
+              "score": 1
+            }
+          ],
+          "tokensUsed": 1878,
+          "durationMs": 3206.3369409999996,
+          "status": "pass",
+          "output": "Based on my knowledge of JavaScript, the output of `console.log(typeof null)` is:\n\n**object**\n\nThis is a well-known quirk in JavaScript where `typeof null` returns `\"object\"` instead of `\"null\"`, even though `null` is actually a primitive value.",
+          "traceId": "01M2JMAJD1F7VDN8ZX902CYQE9",
+          "diagnosis": {
+            "honestyLabel": "honest-failure",
+            "honestyEvidence": "status=failure",
+            "failureModes": [],
+            "blindSpots": [
+              "intervention overlap-storms on real runs: ≤1 guard fired this run — too few to observe an overlap-storm (emitGuardFired is wired across the loop, not terminal-only)"
+            ]
+          },
+          "trust": "honest-failure",
+          "billedTokens": 1992,
+          "cacheReadTokens": 0
+        }
+      ],
+      "meanScores": [
+        {
+          "dimension": "accuracy",
+          "score": 1
+        },
+        {
+          "dimension": "reliability",
+          "score": 1
+        }
+      ],
+      "variance": 0,
+      "meanTokens": 1858,
+      "meanBilledTokens": 1932,
+      "meanCacheReadTokens": 0,
+      "meanDurationMs": 2942,
+      "passRate": 1,
+      "solveRate": 1,
+      "passK": [
+        {
+          "k": 1,
+          "estimate": 1
+        },
+        {
+          "k": 2,
+          "estimate": 1
+        }
+      ]
+    }
+  ],
+  "dimensionSummary": [
+    {
+      "dimension": "accuracy",
+      "byVariant": [
+        {
+          "variantId": "ra-full",
+          "meanScore": 1
+        }
+      ]
+    },
+    {
+      "dimension": "reliability",
+      "byVariant": [
+        {
+          "variantId": "ra-full",
+          "meanScore": 1
+        }
+      ]
+    }
+  ],
+  "reproducibility": {
+    "judgeModelSha": "unknown-no-judge-configured",
+    "judgeCodeSha": "unknown-no-judge-configured",
+    "runId": "run-1789479170886-1yzc2yin",
+    "replayCommand": "bun run --cwd packages/benchmarks bench --session real-world-full --run-id run-1789479170886-1yzc2yin"
+  },
+  "inconclusiveCells": [],
+  "partialMeasurement": false,
+  "passKByVariant": [
+    {
+      "variantId": "ra-full",
+      "passK": [
+        {
+          "k": 1,
+          "estimate": 1
+        },
+        {
+          "k": 2,
+          "estimate": 1
+        }
+      ]
+    }
+  ]
+}

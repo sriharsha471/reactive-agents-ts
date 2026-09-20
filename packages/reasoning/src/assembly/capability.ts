@@ -45,10 +45,27 @@ export interface ResolvedCapability {
    * legacy code path. Env override: `RA_TOOL_RESULT_BUDGET_CHARS`.
    */
   readonly toolResultPreserveBudget: number;
-  predictNumCtx(assembledPromptTokens: number): number;
 }
 
 const BUCKETS = [8192, 16384, 32768, 65536, 131072] as const;
+
+/**
+ * Demand-driven Ollama num_ctx. Monotone within a run: Ollama reloads the model
+ * when num_ctx changes, so the window only ever GROWS (highWater), and never
+ * past the model's ceiling. Opt-in via HarnessConfig.numCtxPolicy = "demand"
+ * (see kernel/capabilities/reason/think.ts, D-2026-07-30-I).
+ */
+export function nextNumCtx(
+  assembledPromptTokens: number,
+  outputBudget: number,
+  highWater: number | undefined,
+  ceiling: number | undefined,
+): number {
+  const need = assembledPromptTokens + outputBudget + 1024; // headroom
+  const bucket = BUCKETS.find((b) => b >= need) ?? BUCKETS[BUCKETS.length - 1];
+  const grown = Math.max(bucket, highWater ?? 0);
+  return ceiling !== undefined ? Math.min(grown, ceiling) : grown;
+}
 
 // Phase 1b (2026-07-07): single source of truth — derive from CONTEXT_PROFILES
 // instead of maintaining a mirror table that can drift (sweep report 02, F4).
@@ -84,9 +101,5 @@ export function resolveCapability(input: CapabilityInput): ResolvedCapability {
     ...input,
     recencyBudgetChars,
     toolResultPreserveBudget,
-    predictNumCtx(assembledPromptTokens: number): number {
-      const need = assembledPromptTokens + input.outputBudget + 1024; // headroom
-      return BUCKETS.find((b) => b >= need) ?? BUCKETS[BUCKETS.length - 1];
-    },
   };
 }

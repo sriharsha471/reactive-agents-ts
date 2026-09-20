@@ -26,7 +26,15 @@ export const generateAgentCard = (config: AgentCardGeneratorConfig): AgentCard =
       url: config.organizationUrl,
     },
     capabilities: {
-      streaming: config.capabilities?.streaming ?? true,
+      // Incremental SSE streaming isn't implemented yet — `handleMessageStream`
+      // (server/http-server.ts) always awaits full task completion before
+      // emitting any event, then sends the terminal status and artifacts as
+      // SSE events. A client sees one burst at the end, not progressive
+      // updates. Advertising `streaming: true` by default would let a caller
+      // rely on incremental delivery we don't have. A caller who has actually
+      // wired incremental streaming can still opt in explicitly via
+      // `config.capabilities.streaming`.
+      streaming: config.capabilities?.streaming ?? false,
       pushNotifications: config.capabilities?.pushNotifications ?? false,
       ...config.capabilities,
     },

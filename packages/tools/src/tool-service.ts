@@ -24,6 +24,35 @@ import { builtinTools } from "./skills/builtin.js";
 import { ToolResultCache } from "./caching/tool-result-cache.js";
 import { ToolApprovalGate, definitionRequiresApproval } from "./governance/tool-approval-gate.js";
 
+/**
+ * Maps an MCP tool's raw JSON Schema `type` string onto `ToolParameter`'s
+ * narrower set. JSON Schema distinguishes `"integer"` from `"number"`;
+ * `ToolParameter`'s own doc comment says `"number"` already covers "integer
+ * or float" — so `"integer"` folds into it rather than failing schema
+ * validation. Found live (2026-09-17) against Google Home MCP, whose real
+ * tool schemas use `"integer"` for several parameters — every such tool
+ * failed to register at all before this normalization existed. Anything
+ * else unrecognized (e.g. a JSON Schema `type` array, or `"null"`) falls
+ * back to `"string"`, the most permissive representation, rather than
+ * crashing registration over a single odd parameter.
+ */
+function normalizeJsonSchemaType(
+  type: string | undefined,
+): "string" | "number" | "boolean" | "object" | "array" {
+  switch (type) {
+    case "integer":
+      return "number";
+    case "string":
+    case "number":
+    case "boolean":
+    case "object":
+    case "array":
+      return type;
+    default:
+      return "string";
+  }
+}
+
 // ─── Service Tag ───
 
 /**
@@ -160,7 +189,16 @@ export class ToolService extends Context.Tag("ToolService")<
     readonly connectMCPServer: (
       config: Pick<
         MCPServer,
-        "name" | "transport" | "endpoint" | "command" | "args" | "cwd" | "env" | "headers"
+        | "name"
+        | "transport"
+        | "endpoint"
+        | "command"
+        | "args"
+        | "cwd"
+        | "env"
+        | "headers"
+        | "auth"
+        | "tokenStore"
       >,
     ) => Effect.Effect<MCPServer, MCPConnectionError>;
 
@@ -453,7 +491,16 @@ export const ToolServiceLive = Layer.effect(
     const connectMCPServer = (
       config: Pick<
         MCPServer,
-        "name" | "transport" | "endpoint" | "command" | "args" | "cwd" | "env" | "headers"
+        | "name"
+        | "transport"
+        | "endpoint"
+        | "command"
+        | "args"
+        | "cwd"
+        | "env"
+        | "headers"
+        | "auth"
+        | "tokenStore"
       >,
     ): Effect.Effect<MCPServer, MCPConnectionError> =>
       Effect.gen(function* () {
@@ -476,7 +523,7 @@ export const ToolServiceLive = Layer.effect(
               for (const [name, prop] of Object.entries(props)) {
                 parameters.push({
                   name,
-                  type: (prop.type as "string" | "number" | "boolean" | "object" | "array") ?? "string",
+                  type: normalizeJsonSchemaType(prop.type),
                   description: prop.description ?? "",
                   required: required.includes(name),
                 });

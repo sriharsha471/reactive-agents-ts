@@ -68,6 +68,18 @@ export function runReactiveObserver(
   currentOptions: KernelRunOptions,
   tier: ModelTier,
   harnessPipeline?: import("@reactive-agents/core").HarnessPipeline,
+  /**
+   * The kernel's running `failureRecoveryRedirects` count (RC-3 fix). The kernel's
+   * repeated-identical-failure streak redirect is the single trigger authority for
+   * "the agent is stuck"; RI's strategy-switch evaluator only escalates a stall the
+   * kernel has already acted on. Omitted → RI fails closed (no strategy switch).
+   *
+   * Scope note: this counter only increments on unresolved TOOL failure
+   * recovery (`recovery.failedUnresolved.length > 0`) — RI's entropy
+   * switch-strategy evaluator is therefore unreachable for thought-only loops,
+   * or for tool calls that succeed but return unproductive results.
+   */
+  failureRecoveryRedirects?: number,
 ): Effect.Effect<{ state: KernelState; prevStepCount: number }, never> {
   return Effect.gen(function* () {
     let s = state;
@@ -102,6 +114,7 @@ export function runReactiveObserver(
             iteration: completedIteration,
             maxIterations: (s.meta.maxIterations as number) ?? 10,
             modelId: s.meta.entropy?.modelId ?? "unknown",
+            providerName: s.meta.entropy?.providerName,
             temperature: s.meta.entropy?.temperature ?? 0,
             priorThought,
             logprobs: s.meta.entropy?.lastLogprobs,
@@ -277,6 +290,12 @@ export function runReactiveObserver(
           // FM-A3 backstop — empty-output invariant for RI early-stop.
           hasUserOutput: typeof s.output === "string" && s.output.trim().length > 0,
           hasUnconsumedStoredEvidence,
+          // RC-3 — single loop-stuck trigger authority. The kernel's redirect
+          // streak is the trigger; entropy only escalates a stall the kernel
+          // already acted on. Absent → RI's strategy-switch fails closed.
+          ...(failureRecoveryRedirects === undefined
+            ? {}
+            : { kernelLoopSignal: { redirectsIssued: failureRecoveryRedirects } }),
           // DEFECT 1 fix — thread the real model tier so stall-detect uses the
           // correct tier-scaled stall window (mid=3/large=4/frontier=5) instead
           // of the hardcoded local=2 that caused premature give-up at iter 2.
@@ -299,6 +318,13 @@ export function runReactiveObserver(
               decision: (decision as Record<string, unknown>).decision,
               reason: (decision as Record<string, unknown>).reason,
               entropyBefore: latestScore?.composite ?? 0,
+              // Forward the controller-supplied confidence (e.g. switch-strategy's
+              // loop-score headroom) — without this, trace/normalize.ts's
+              // ReactiveDecision mapper never sees it and falls back to the
+              // entropyBefore/After delta formula (always 0 for switch-strategy).
+              ...((decision as Record<string, unknown>).confidence !== undefined
+                ? { confidence: (decision as Record<string, unknown>).confidence }
+                : {}),
             }).pipe(Effect.catchAll(() => Effect.void));
           }
         }

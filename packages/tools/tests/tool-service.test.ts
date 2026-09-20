@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 
 import { EventBusLive } from "@reactive-agents/core";
 import { ToolService, ToolServiceLive } from "../src/tool-service.js";
+import { builtinTools } from "../src/skills/builtin.js";
 
 const TestToolLayer = ToolServiceLive.pipe(Layer.provide(EventBusLive));
 
@@ -250,9 +251,8 @@ describe("ToolService", () => {
       );
 
       const all = yield* tools.listTools();
-      // 11 capability built-ins (web-search, crypto-price, http-get, file-read,
-      // list-directory, file-write, grep, code-execute, git-cli, gh-cli, gws-cli) + 2 registered = 13
-      expect(all).toHaveLength(13);
+      // Every capability builtin, plus the 2 registered by this test.
+      expect(all).toHaveLength(builtinTools.length + 2);
 
       const searchOnly = yield* tools.listTools({ category: "search" });
       // built-in web-search + tool-a
@@ -260,8 +260,11 @@ describe("ToolService", () => {
       expect(searchOnly.map((t) => t.name)).toContain("tool-a");
 
       const highRisk = yield* tools.listTools({ riskLevel: "high" });
-      // built-in file-write + tool-b
-      expect(highRisk).toHaveLength(2);
+      // built-in high-risk tools + tool-b registered by this test
+      const builtinHighRiskCount = builtinTools.filter(
+        (t) => t.definition.riskLevel === "high",
+      ).length;
+      expect(highRisk).toHaveLength(builtinHighRiskCount + 1);
       expect(highRisk.map((t) => t.name)).toContain("tool-b");
 
       const functions = yield* tools.listTools({ source: "function" });
@@ -316,6 +319,79 @@ describe("ToolService", () => {
     });
 
     await Effect.runPromise(program.pipe(Effect.provide(TestToolLayer)));
+  });
+
+  it("registers an MCP tool whose schema uses JSON Schema's \"integer\" type (found live against Google Home MCP)", async () => {
+    // Real MCP tool schemas can legitimately use "integer" — a distinct
+    // JSON Schema type from "number" — for an integer-only parameter.
+    // ToolParameter's own doc comment says "number" already covers
+    // "integer or float"; before normalizeJsonSchemaType existed, any such
+    // tool failed to register at all (a `Schema.Literal` mismatch on
+    // `type`), which is exactly what happened live against every
+    // integer-parameter tool Google's Home MCP server advertises.
+    const integerToolServer = Bun.serve({
+      port: 0,
+      idleTimeout: 5,
+      fetch(req) {
+        if (req.method !== "POST") return new Response("Not Found", { status: 404 });
+        return req.json().then((body: { id: unknown; method: string }) => {
+          if (body.method === "initialize") {
+            return Response.json({
+              jsonrpc: "2.0",
+              id: body.id,
+              result: {
+                protocolVersion: "2024-11-05",
+                capabilities: { tools: {} },
+                serverInfo: { name: "integer-tool-mcp", version: "1.0.0" },
+              },
+            });
+          }
+          if (body.method === "tools/list") {
+            return Response.json({
+              jsonrpc: "2.0",
+              id: body.id,
+              result: {
+                tools: [
+                  {
+                    name: "set_count",
+                    description: "Sets a count",
+                    inputSchema: {
+                      type: "object",
+                      properties: {
+                        count: { type: "integer", description: "How many" },
+                        label: { type: "string", description: "A label" },
+                      },
+                      required: ["count"],
+                    },
+                  },
+                ],
+              },
+            });
+          }
+          return Response.json({ jsonrpc: "2.0", id: body.id, result: {} });
+        });
+      },
+    });
+
+    try {
+      const program = Effect.gen(function* () {
+        const tools = yield* ToolService;
+        yield* tools.connectMCPServer({
+          name: "integer-tool-server",
+          transport: "streamable-http",
+          endpoint: `http://localhost:${integerToolServer.port}/mcp`,
+        });
+        return yield* tools.getTool("integer-tool-server/set_count");
+      });
+
+      const def = await Effect.runPromise(program.pipe(Effect.provide(TestToolLayer)));
+      const countParam = def.parameters.find((p) => p.name === "count");
+      expect(countParam?.type).toBe("number");
+      const labelParam = def.parameters.find((p) => p.name === "label");
+      expect(labelParam?.type).toBe("string");
+    } finally {
+      integerToolServer.stop(true);
+    }
   });
 
   it("should disconnect from an MCP server", async () => {

@@ -64,6 +64,44 @@ describe("repetitionGuard — distinct-target carve-out (2026-08-15 rw-7 finding
   });
 });
 
+describe("repetitionGuard — file-edit distinct-target keys on path+oldText (final-review I-1)", () => {
+  function stateWithFileEdits(edits: Array<{ path: string; oldText: string }>): KernelState {
+    const steps = edits.map(({ path, oldText }) => ({
+      type: "action",
+      metadata: { toolCall: { name: "file-edit", arguments: { path, oldText, newText: "x" } } },
+    }));
+    return makeState({ steps: steps as any, meta: {} as any });
+  }
+
+  it("does not block a 3rd+ file-edit to the SAME file when oldText differs (canonical multi-edit use case)", () => {
+    const feInput = { requiredToolQuantities: {}, nextMovesPlanning: { maxBatchSize: 4 } } as KernelInput;
+    const thirdCall = { name: "file-edit", arguments: { path: "./big.ts", oldText: "region-3", newText: "x" } } as any;
+    const outcome = repetitionGuard(
+      thirdCall,
+      stateWithFileEdits([
+        { path: "./big.ts", oldText: "region-1" },
+        { path: "./big.ts", oldText: "region-2" },
+      ]),
+      feInput,
+    );
+    expect(outcome.pass).toBe(true);
+  });
+
+  it("still blocks a 3rd+ file-edit when path AND oldText both repeat (genuine unproductive repeat)", () => {
+    const feInput = { requiredToolQuantities: {}, nextMovesPlanning: { maxBatchSize: 4 } } as KernelInput;
+    const thirdCall = { name: "file-edit", arguments: { path: "./big.ts", oldText: "region-1", newText: "x" } } as any;
+    const outcome = repetitionGuard(
+      thirdCall,
+      stateWithFileEdits([
+        { path: "./big.ts", oldText: "region-1" },
+        { path: "./big.ts", oldText: "region-1" },
+      ]),
+      feInput,
+    );
+    expect(outcome.pass).toBe(false);
+  });
+});
+
 describe("unconsumedEvidenceGuard — deterministic grounding, no recall() required (2026-08-16 root fix)", () => {
   const finalAnswerCall = { name: "final-answer", arguments: { output: "done" } } as any;
 

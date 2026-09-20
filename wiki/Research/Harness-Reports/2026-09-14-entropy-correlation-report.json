@@ -1,0 +1,54 @@
+{
+  "rows": [
+    {
+      "taskId": "rw-1",
+      "modelVariantId": "qwen3.5:latest",
+      "trust": "verified-correct",
+      "status": "pass",
+      "entropyFirst": 0.5511323735955056,
+      "entropyLast": 0.6938766442217351,
+      "entropyShape": "diverging",
+      "minSourcesPresent": 2,
+      "maxSourcesPresent": 2,
+      "degradedIterations": 10,
+      "lowConfidenceIterations": 10,
+      "earlyStopFired": false
+    },
+    {
+      "taskId": "rw-1",
+      "modelVariantId": "qwen3.5:latest",
+      "trust": "verified-correct",
+      "status": "pass",
+      "entropyFirst": 0.5812191539365452,
+      "entropyLast": 0.5749514001388567,
+      "entropyShape": "flat",
+      "minSourcesPresent": 2,
+      "maxSourcesPresent": 2,
+      "degradedIterations": 7,
+      "lowConfidenceIterations": 7,
+      "earlyStopFired": false
+    },
+    {
+      "taskId": "rw-1",
+      "modelVariantId": "qwen3.5:latest",
+      "trust": "verified-correct",
+      "status": "pass",
+      "entropyFirst": 0.5839063270596504,
+      "entropyLast": 0.5983333333333333,
+      "entropyShape": "flat",
+      "minSourcesPresent": 2,
+      "maxSourcesPresent": 2,
+      "degradedIterations": 7,
+      "lowConfidenceIterations": 7,
+      "earlyStopFired": false
+    }
+  ],
+  "summary": {
+    "totalRows": 3,
+    "meanEntropyLastByTrust": {
+      "verified-correct": 0.622387125897975
+    },
+    "earlyStopFireCount": 0,
+    "unknownShapeCount": 0
+  }
+}

@@ -16,6 +16,7 @@ import { runDeploy } from "./commands/deploy/index.js";
 import { runTrace } from "./commands/trace.js";
 import { runSkills } from "./commands/skills.js";
 import { runDiagnose } from "./commands/diagnose.js";
+import { runMcp } from "./commands/mcp.js";
 import { printBanner, printVersion, VERSION } from "./banner.js";
 import { fail, info } from "./ui.js";
 
@@ -51,6 +52,10 @@ const HELP = `
     skills export --agent <id> [--name <s>] [--out <file|dir>]   Export skills as SKILL.md
     skills import <file> --agent <id> [--rebind <id>] [--regenerate-id]   Import from SKILL.md
     skills list --agent <id>                          List skills for an agent
+    mcp login <name|--url <endpoint>> [options]       OAuth login to a remote MCP server
+    mcp logout <name|--url <endpoint>>                Delete (and revoke) stored MCP credentials
+    mcp status                                        List stored MCP OAuth credentials
+                                                        (run \`rax mcp --help\` for details)
     ps [--db <path>] [--all]                          List durable runs (process model)
     attach <runId> [--db <path>]                      Poll a durable run's status until terminal
     help                                              Show this help
@@ -92,7 +97,7 @@ export function main(argv: string[] = process.argv.slice(2)) {
       break;
 
     case "serve":
-      runServe(argv.slice(1));
+      runAsync(runServe(argv.slice(1)));
       break;
 
     case "discover":
@@ -141,6 +146,10 @@ export function main(argv: string[] = process.argv.slice(2)) {
 
     case "diagnose":
       runAsync(runDiagnose(argv.slice(1)));
+      break;
+
+    case "mcp":
+      runAsync(runMcp(argv.slice(1)));
       break;
 
     case "ps":

@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-08-15T03:34:07.243Z",
+  "capturedAt": "2026-09-19T19:35:16.048Z",
   "bunVersion": "1.3.10",
   "scenarios": {
     "cf-04-goal-achieved-from-end-turn": {
       "status": "success",
-      "iterations": 2,
-      "terminatedBy": "unknown",
+      "iterations": 1,
+      "terminatedBy": "end_turn",
       "goalAchieved": null,
       "toolCallsObserved": [],
       "interventionsDispatched": [],
@@ -14,13 +14,13 @@
       "redactorsTriggered": [],
       "customAssertions": {
         "sawRunCompleted": true,
-        "terminatedByCaptured": "missing"
+        "terminatedByCaptured": "end_turn"
       }
     },
     "cf-10-error-swallowed-event-emitted": {
       "status": "success",
-      "iterations": 2,
-      "terminatedBy": "unknown",
+      "iterations": 1,
+      "terminatedBy": "end_turn",
       "goalAchieved": null,
       "toolCallsObserved": [],
       "interventionsDispatched": [],
@@ -36,8 +36,8 @@
     },
     "cf-11-redactor-strips-secrets": {
       "status": "success",
-      "iterations": 2,
-      "terminatedBy": "unknown",
+      "iterations": 1,
+      "terminatedBy": "end_turn",
       "goalAchieved": null,
       "toolCallsObserved": [],
       "interventionsDispatched": [],
@@ -53,8 +53,8 @@
     },
     "cf-13-no-advisory-only-dispatches": {
       "status": "success",
-      "iterations": 2,
-      "terminatedBy": "unknown",
+      "iterations": 1,
+      "terminatedBy": "end_turn",
       "goalAchieved": null,
       "toolCallsObserved": [],
       "interventionsDispatched": [],
@@ -69,8 +69,8 @@
     },
     "cf-14-w4-maxiterations-honored": {
       "status": "success",
-      "iterations": 2,
-      "terminatedBy": "unknown",
+      "iterations": 1,
+      "terminatedBy": "end_turn",
       "goalAchieved": null,
       "toolCallsObserved": [],
       "interventionsDispatched": [],
@@ -84,8 +84,8 @@
     },
     "cf-15-num-ctx-from-capability": {
       "status": "success",
-      "iterations": 2,
-      "terminatedBy": "unknown",
+      "iterations": 1,
+      "terminatedBy": "end_turn",
       "goalAchieved": null,
       "toolCallsObserved": [],
       "interventionsDispatched": [],
@@ -104,8 +104,8 @@
     },
     "cf-16-capability-cache-roundtrip": {
       "status": "success",
-      "iterations": 2,
-      "terminatedBy": "unknown",
+      "iterations": 1,
+      "terminatedBy": "end_turn",
       "goalAchieved": null,
       "toolCallsObserved": [],
       "interventionsDispatched": [],
@@ -120,8 +120,8 @@
     },
     "cf-17-tier-derived-from-capability": {
       "status": "success",
-      "iterations": 2,
-      "terminatedBy": "unknown",
+      "iterations": 1,
+      "terminatedBy": "end_turn",
       "goalAchieved": null,
       "toolCallsObserved": [],
       "interventionsDispatched": [],
@@ -134,8 +134,8 @@
     },
     "cf-18-meta-tools-trusted": {
       "status": "success",
-      "iterations": 2,
-      "terminatedBy": "unknown",
+      "iterations": 1,
+      "terminatedBy": "end_turn",
       "goalAchieved": null,
       "toolCallsObserved": [],
       "interventionsDispatched": [],
@@ -161,8 +161,8 @@
     },
     "cf-21-failure-detected-from-controller-signal": {
       "status": "success",
-      "iterations": 2,
-      "terminatedBy": "unknown",
+      "iterations": 1,
+      "terminatedBy": "end_turn",
       "goalAchieved": null,
       "toolCallsObserved": [],
       "interventionsDispatched": [],
@@ -182,8 +182,8 @@
     },
     "cf-22-kernel-internal-structure": {
       "status": "success",
-      "iterations": 2,
-      "terminatedBy": "unknown",
+      "iterations": 1,
+      "terminatedBy": "end_turn",
       "goalAchieved": null,
       "toolCallsObserved": [],
       "interventionsDispatched": [],
@@ -201,8 +201,8 @@
     },
     "cf-23-verifier-runs-after-effector": {
       "status": "success",
-      "iterations": 2,
-      "terminatedBy": "unknown",
+      "iterations": 1,
+      "terminatedBy": "end_turn",
       "goalAchieved": null,
       "toolCallsObserved": [],
       "interventionsDispatched": [],
@@ -227,8 +227,8 @@
     },
     "cf-24-all-termination-flows-through-arbitrator": {
       "status": "success",
-      "iterations": 2,
-      "terminatedBy": "unknown",
+      "iterations": 1,
+      "terminatedBy": "end_turn",
       "goalAchieved": null,
       "toolCallsObserved": [],
       "interventionsDispatched": [],
@@ -253,8 +253,8 @@
     },
     "cf-25-capability-registry-violations-bounded": {
       "status": "success",
-      "iterations": 2,
-      "terminatedBy": "unknown",
+      "iterations": 1,
+      "terminatedBy": "end_turn",
       "goalAchieved": null,
       "toolCallsObserved": [],
       "interventionsDispatched": [],

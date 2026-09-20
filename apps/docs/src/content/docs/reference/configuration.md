@@ -161,13 +161,12 @@ Every key of `AgentConfig`, its type, and whether it is required. This table is
 | `reasoning.harness.assemblyDebug` | `boolean` | no |  |
 | `reasoning.harness.auditRationale` | `boolean` | no |  |
 | `reasoning.harness.lazyDisclosure` | `boolean` | no |  |
+| `reasoning.harness.numCtxPolicy` | `fixed` \| `demand` | no |  |
 | `reasoning.harness.promptDumpPathPrefix` | `string` | no |  |
 | `reasoning.harness.recencyBudgetChars` | `number` | no |  |
-| `reasoning.harness.thoughtContinuity` | `boolean` | no |  |
 | `reasoning.harness.toolDiscovery` | `boolean` | no |  |
 | `reasoning.harness.toolIndex` | `boolean` | no |  |
 | `reasoning.harness.toolIndexMaxEntries` | `number` | no |  |
-| `reasoning.harness.toolObserveSymmetry` | `boolean` | no |  |
 | `reasoning.harness.toolResultBudgetChars` | `number` | no |  |
 | `reasoning.harness.treeOfThoughtExploreBudgetMs` | `number` | no |  |
 | `reasoning.harness.verboseRules` | `boolean` | no |  |
@@ -232,7 +231,7 @@ Every key of `AgentConfig`, its type, and whether it is required. This table is
 | `.withTools(options?)` | disabled | `{ tools?` (custom defs + **Effect** handlers), `resultCompression?`, `allowedTools?`, `adaptive?` } |
 | `.withDocuments(docs)` | none | `DocumentSpec[]` ingested at build; retrieval via the unified `find` meta-tool |
 | `.withRequiredTools(config)` | none | `{ tools?, adaptive?, maxRetries? }` |
-| `.withMCP(config)` | none | MCP: `{ name, transport, command?, args?, endpoint?, headers?, env?, cwd? }` (see [Builder API](/reference/builder-api/) transport table) |
+| `.withMCP(config)` | none | MCP: `{ name, transport, command?, args?, endpoint?, headers?, env?, cwd?, auth?, tokenStore? }`. `auth` runs OAuth 2.1 for `streamable-http`/`sse` servers (startup error on `stdio`); default `tokenStore` is a permissioned file store under `~/.reactive-agents/mcp-auth`. `interactive` inside `auth` defaults to `false`. See [Builder API](/reference/builder-api/) transport table and the [Tools guide's OAuth section](/guides/tools/#oauth-21-auth). One-time interactive login: `rax mcp login <name>`. |
 | `.withMetaTools(config?)` | on with tools | Conductor suite; pass `false` to disable defaults |
 
 ### LLM resilience & pricing
@@ -292,7 +291,7 @@ Every key of `AgentConfig`, its type, and whether it is required. This table is
 
 | Method | Default | Description |
 |--------|---------|-------------|
-| `.withA2A(options?)` | `{ port: 3000 }` | Local A2A JSON-RPC server (`port`, `basePath`) |
+| `.withA2A(options?)` | `{ port: 3000 }` | Configures A2A server defaults (`port`, `basePath`); call `agent.serveA2A()` to serve |
 | `.withAgentTool(name, config)` | none | Register a static sub-agent as a tool |
 | `.withDynamicSubAgents(options?)` | disabled | Allow LLM to spawn sub-agents at runtime |
 | `.withRemoteAgent(name, url)` | none | Connect to a remote agent via A2A protocol |

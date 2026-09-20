@@ -50,10 +50,7 @@ const BEHAVIOURAL: readonly (readonly [string, string])[] = [
   // nothing about WHICH of the three mechanisms was doing the work.
   ["RA_TOOL_DISCOVERY", "0"], // !== "0" — default ON, so "0" is the ablation
   ["RA_VERBOSE_RULES", "1"], // === "1" — default OFF, so "1" is the ablation
-  ["RA_THOUGHT_CONTINUITY", "1"], // === "1"
-  ["RA_TOOL_OBSERVE_SYMMETRY", "1"], // === "1"
   ["RA_RATIONALE_AUDIT", "1"], // === "1"
-  ["RA_OVERHAUL", "1"], // === "1"
   ["RA_AGENT_STRICT_EGRESS", "1"], // !== "1"
   ["REACTIVE_AGENTS_DISABLE_STATUS_MODE", "true"], // === "true"
   ["RA_RECENCY_BUDGET_CHARS", "200"], // Number(...)

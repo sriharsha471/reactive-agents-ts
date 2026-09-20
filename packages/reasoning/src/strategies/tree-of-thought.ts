@@ -127,6 +127,8 @@ interface TreeOfThoughtInput {
   readonly maxRequiredToolRetries?: number;
   /** Model identifier for routing/entropy scoring */
   readonly modelId?: string;
+  /** Provider name for entropy-based modelTier resolution */
+  readonly providerName?: string;
   /** LLM temperature override */
   readonly temperature?: number;
   readonly synthesisConfig?: import("../context/synthesis-types.js").SynthesisConfig;
@@ -296,6 +298,7 @@ export const executeTreeOfThought = (
         taskId: input.taskId,
         kernelPass: "tree-of-thought:bfs-skipped",
         modelId: input.modelId,
+        providerName: input.providerName,
         taskDescription: input.taskDescription,
         temperature: 0.7,
         ...(input.horizonProfile ? { horizonProfile: input.horizonProfile } : {}),
@@ -836,6 +839,7 @@ export const executeTreeOfThought = (
       taskId: input.taskId,
       kernelPass: "tree-of-thought:execute",
       modelId: input.modelId,
+      providerName: input.providerName,
       taskDescription: input.taskDescription,
       temperature: 0.7,
       ...(input.horizonProfile ? { horizonProfile: input.horizonProfile } : {}),

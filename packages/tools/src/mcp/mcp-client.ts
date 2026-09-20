@@ -30,9 +30,14 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { UnauthorizedError, type OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { MCPServer } from "../types.js";
 import { MCPConnectionError, ToolExecutionError } from "../errors.js";
+import { createAuthProvider } from "./auth/create-provider.js";
+import { hasRedactor, redactBearerTokens, LOOPBACK_HOSTS } from "./auth/hardened-provider.js";
+import { createFileTokenStore } from "./auth/token-store.js";
+import type { MCPTokenStore } from "./auth/types.js";
 
 const mcpDebug = (...args: unknown[]): void => {
   if (process.env["RAX_DEBUG"]) console.log(...args);
@@ -41,9 +46,119 @@ const mcpDebug = (...args: unknown[]): void => {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type ConnectConfig = Omit<
-  Pick<MCPServer, "name" | "transport" | "endpoint" | "command" | "args" | "cwd" | "env" | "headers">,
+  Pick<
+    MCPServer,
+    | "name"
+    | "transport"
+    | "endpoint"
+    | "command"
+    | "args"
+    | "cwd"
+    | "env"
+    | "headers"
+    | "auth"
+    | "tokenStore"
+  >,
   "transport"
 > & { transport?: MCPServer["transport"] };
+
+/**
+ * Default OAuth token store when `config.auth` is set without an explicit
+ * `config.tokenStore` — the persistent file store under `~/.reactive-agents/mcp-auth`
+ * (matches `MCPServer.tokenStore`'s documented default, `.withMCP()`'s JSDoc, every
+ * docs site, and the changeset; `rax mcp login <name>` writes to this same file store,
+ * so a subsequent connection with no explicit `tokenStore` must read from it too —
+ * final-review C1). Shared across servers: {@link MCPTokenStore} keys are
+ * canonicalized per-resource-URL (see `canonicalResourceKey`), so two servers
+ * never collide on this shared instance. Pass `createMemoryTokenStore()` explicitly
+ * for tests/CI that must not touch disk.
+ */
+let defaultTokenStore: MCPTokenStore | undefined;
+function getDefaultTokenStore(): MCPTokenStore {
+  defaultTokenStore ??= createFileTokenStore();
+  return defaultTokenStore;
+}
+
+/**
+ * Sanitizes an error message before it crosses into `MCPConnectionError` /
+ * `ToolExecutionError`. Uses `provider`'s observed-secret redactor when one
+ * is available (every provider `createAuthProvider` builds from RA's own
+ * config exposes one — see `./auth/hardened-provider.ts`); falls back to a
+ * generic `Bearer <token>`-pattern strip otherwise (e.g. a caller-supplied
+ * `type: "provider"`, which this task does not wrap, or a connect failure
+ * that never got far enough to construct a provider at all).
+ */
+function sanitizeErrorMessage(message: string, provider: OAuthClientProvider | undefined): string {
+  if (provider && hasRedactor(provider)) return provider.redactSecrets(message);
+  return redactBearerTokens(message);
+}
+
+/**
+ * The endpoint-must-be-HTTPS-unless-loopback half of `validateAuthConfig` below,
+ * factored out (final-review I4) so a caller that never builds a `ConnectConfig` — e.g.
+ * `apps/cli`'s `rax mcp login`/`logout`, which drives the SDK's `auth()` orchestrator
+ * directly against a resolved endpoint string — can run the exact same check before
+ * starting any network-facing OAuth flow. Deliberately does NOT include
+ * `validateAuthConfig`'s stdio-transport or headers-ambiguity checks; neither applies to
+ * a bare `--url` endpoint with no transport/headers config.
+ *
+ * RA-owned regardless of SDK behavior (Task 5): the MCP endpoint itself must be HTTPS
+ * whenever `auth` is set (or is about to be driven), unless it's a loopback address —
+ * same convention as `packages/runtime-shim/src/secure-serve.ts`'s `LOOPBACK_HOSTS`.
+ * Distinct from `./auth/hardened-provider.ts`'s HTTPS check, which covers the
+ * authorization/token/registration endpoints a discovered authorization-server
+ * metadata document advertises, not this endpoint. Checked before any transport is
+ * constructed or fetch issued — so an OAuth-protected resource never gets contacted in
+ * plaintext even on the very first request.
+ */
+export function validateAuthEndpointIsHttps(serverName: string, endpoint: string): void {
+  let endpointUrl: URL;
+  try {
+    endpointUrl = new URL(endpoint);
+  } catch {
+    throw new Error(`MCP server "${serverName}": "endpoint" ("${endpoint}") is not a valid URL.`);
+  }
+  const isLoopback = LOOPBACK_HOSTS.has(endpointUrl.hostname.toLowerCase());
+  if (endpointUrl.protocol !== "https:" && !isLoopback) {
+    throw new Error(
+      `MCP server "${serverName}": "auth" requires an HTTPS endpoint (got "${endpointUrl.protocol}//${endpointUrl.host}") unless the host is a loopback address (127.0.0.1/::1/localhost) — refusing a plaintext OAuth-protected connection.`,
+    );
+  }
+}
+
+/**
+ * Config-time validation for `config.auth` — must run before any connection
+ * attempt (network fetch or subprocess spawn), per the plan's "ambiguous
+ * credential source" and "stdio gets credentials from the environment, not
+ * OAuth" requirements. Throws a plain `Error`; the caller (`connectInternal`
+ * via the `connect` Effect in `makeMCPClient`) wraps it into an
+ * `MCPConnectionError` like any other connect-time failure.
+ *
+ * Deliberately does not echo any secret value in its error messages.
+ */
+function validateAuthConfig(config: ConnectConfig): void {
+  if (!config.auth) return;
+
+  const transport = resolveTransport(config);
+  if (transport === "stdio") {
+    throw new Error(
+      `MCP server "${config.name}": "auth" is not supported for "stdio" transport — stdio servers get credentials from the environment (e.g. "env"), not OAuth.`,
+    );
+  }
+
+  const hasAuthorizationHeader = Object.keys(config.headers ?? {}).some(
+    (key) => key.toLowerCase() === "authorization",
+  );
+  if (hasAuthorizationHeader) {
+    throw new Error(
+      `MCP server "${config.name}": both "auth" and a "headers.Authorization" entry are set — ambiguous credential source. Use one or the other, not both.`,
+    );
+  }
+
+  if (config.endpoint) {
+    validateAuthEndpointIsHttps(config.name, config.endpoint);
+  }
+}
 
 interface ActiveConnection {
   client: Client;
@@ -57,6 +172,15 @@ interface ActiveConnection {
    * daemon keeps it alive until explicitly told to stop it.
    */
   dockerContainerName?: string;
+  /**
+   * The OAuth provider used to connect, when `config.auth` was set. Kept so
+   * later error paths (`callTool`, `disconnect`) can sanitize their error
+   * messages via the provider's redactor (see `sanitizeErrorMessage` above) —
+   * `connect`'s own errors are sanitized inside `connectHttpLike` instead,
+   * since that's the only place still holding a reference to a provider that
+   * never made it into a successful `ActiveConnection`.
+   */
+  authProvider?: OAuthClientProvider;
 }
 
 // ─── Module-level State ───────────────────────────────────────────────────────
@@ -360,7 +484,44 @@ function resolveTransport(config: ConnectConfig): MCPServer["transport"] {
   );
 }
 
-function createTransport(config: ConnectConfig, overrideArgs?: string[]): Transport {
+/**
+ * Builds a minimal `MCPServer`-shaped view of `config` for `createAuthProvider`
+ * (whose signature is `(server: MCPServer, store) => ...` per the plan). Only
+ * `name`/`transport`/`endpoint`/`auth` are actually read by `createAuthProvider`;
+ * the remaining `MCPServerSchema` fields are filled with connect-time-accurate
+ * placeholders (no tools discovered yet, not yet connected).
+ */
+function toMCPServerLike(config: ConnectConfig): MCPServer {
+  return {
+    name: config.name,
+    version: "unknown",
+    transport: resolveTransport(config),
+    endpoint: config.endpoint,
+    command: config.command,
+    args: config.args,
+    cwd: config.cwd,
+    env: config.env,
+    headers: config.headers,
+    tools: [],
+    status: "disconnected",
+    auth: config.auth,
+    tokenStore: config.tokenStore,
+  };
+}
+
+/**
+ * @param authProviderOverride When set, used instead of constructing a fresh
+ * `createAuthProvider(...)` — required for the authorization-code retry in
+ * `connectHttpLike` below, which builds a SECOND transport (post-`finishAuth`)
+ * that must reuse the exact same provider instance (its `state`/PKCE
+ * verifier/loopback-listener are all tied to that one instance, not
+ * reconstructible from `config` alone).
+ */
+function createTransport(
+  config: ConnectConfig,
+  overrideArgs?: string[],
+  authProviderOverride?: OAuthClientProvider,
+): Transport {
   const headers = config.headers ?? {};
   const transport = resolveTransport(config);
 
@@ -381,13 +542,17 @@ function createTransport(config: ConnectConfig, overrideArgs?: string[]): Transp
       if (!config.endpoint) throw new Error(
         `MCP server "${config.name}" has transport "streamable-http" but no endpoint specified`,
       );
-      return new StreamableHTTPClientTransport(new URL(config.endpoint), { requestInit: { headers } });
+      const authProvider =
+        authProviderOverride ?? createAuthProvider(toMCPServerLike(config), config.tokenStore ?? getDefaultTokenStore());
+      return new StreamableHTTPClientTransport(new URL(config.endpoint), { requestInit: { headers }, authProvider });
     }
     case "sse": {
       if (!config.endpoint) throw new Error(
         `MCP server "${config.name}" has transport "sse" but no endpoint specified`,
       );
-      return new SSEClientTransport(new URL(config.endpoint), { requestInit: { headers } });
+      const authProvider =
+        authProviderOverride ?? createAuthProvider(toMCPServerLike(config), config.tokenStore ?? getDefaultTokenStore());
+      return new SSEClientTransport(new URL(config.endpoint), { requestInit: { headers }, authProvider });
     }
     case "websocket":
       throw new Error(
@@ -396,6 +561,40 @@ function createTransport(config: ConnectConfig, overrideArgs?: string[]): Transp
     default:
       throw new Error(`MCP server "${config.name}": unknown transport "${String(config.transport)}"`);
   }
+}
+
+/** The extra members `createAuthorizationCodeProvider` adds beyond the plain SDK `OAuthClientProvider`. */
+interface AuthorizationCodeProviderHandle {
+  waitForAuthorizationCode(): Promise<string>;
+  disposeAuthorizationListener(): Promise<void>;
+}
+
+/**
+ * Type guard: does `provider` additionally expose the authorization-code
+ * handle above? Only `createAuthorizationCodeProvider`'s return value does
+ * (see `./auth/authorization-code-provider.ts`) — `createAuthProvider`'s
+ * declared return type is the plain SDK `OAuthClientProvider`, so callers
+ * that need the extra members narrow to it explicitly here rather than
+ * widening that public return type.
+ */
+function hasAuthorizationCodeHandle(
+  provider: OAuthClientProvider,
+): provider is OAuthClientProvider & AuthorizationCodeProviderHandle {
+  const candidate = provider as Partial<AuthorizationCodeProviderHandle>;
+  // Both members are required — a provider exposing only one (e.g. a
+  // caller-supplied `type: "provider"` that happens to name a method
+  // `waitForAuthorizationCode` but not `disposeAuthorizationListener`)
+  // must not be treated as ours: the dispose call at the cleanup site
+  // would then throw a synchronous TypeError that masks the real connect
+  // error instead of being caught by its `.catch()`.
+  return (
+    typeof candidate.waitForAuthorizationCode === "function" &&
+    typeof candidate.disposeAuthorizationListener === "function"
+  );
+}
+
+function isInteractiveAuthorizationCode(config: ConnectConfig): boolean {
+  return config.auth?.type === "authorization_code" && config.auth.interactive === true;
 }
 
 // ─── HTTP Reconnect ────────────────────────────────────────────────────────────
@@ -507,12 +706,20 @@ async function reconnectViaHttp(
     { type: "sse", url: sseUrl },
   ];
 
+  // Same provider construction as `createTransport`'s streamable-http/sse cases —
+  // this path (Docker/subprocess auto-upgrade from stdio to HTTP) currently can
+  // never carry `config.auth` in practice (`validateAuthConfig` rejects `auth` on
+  // any config that resolves to "stdio" transport, and reaching this function
+  // requires exactly that). Wired anyway for parity: if that stdio+auth
+  // restriction is ever relaxed, this path must not silently skip auth.
+  const authProvider = createAuthProvider(toMCPServerLike(config), config.tokenStore ?? getDefaultTokenStore());
+
   let lastError: unknown;
   for (const candidate of candidates) {
     const httpTransport: Transport =
       candidate.type === "streamable-http"
-        ? new StreamableHTTPClientTransport(new URL(candidate.url), { requestInit: { headers: config.headers ?? {} } })
-        : new SSEClientTransport(new URL(candidate.url), { requestInit: { headers: config.headers ?? {} } });
+        ? new StreamableHTTPClientTransport(new URL(candidate.url), { requestInit: { headers: config.headers ?? {} }, authProvider })
+        : new SSEClientTransport(new URL(candidate.url), { requestInit: { headers: config.headers ?? {} }, authProvider });
 
     const sdkClient = new Client({ name: "reactive-agents", version: "1.0.0" }, { capabilities: {} });
     try {
@@ -581,6 +788,7 @@ async function buildMCPServer(
 // ─── Core Connect ─────────────────────────────────────────────────────────────
 
 async function connectInternal(config: ConnectConfig): Promise<ActiveConnection> {
+  validateAuthConfig(config);
   const effectiveTransport = resolveTransport(config);
 
   // ── stdio path ──
@@ -685,12 +893,105 @@ async function connectInternal(config: ConnectConfig): Promise<ActiveConnection>
   }
 
   // ── HTTP / SSE ──
-  const transport = createTransport(config);
-  const sdkClient = new Client({ name: "reactive-agents", version: "1.0.0" }, { capabilities: {} });
-  await sdkClient.connect(transport);
+  return connectHttpLike(config, effectiveTransport);
+}
+
+/**
+ * HTTP/SSE connect, with the authorization-code interactive retry: the SDK
+ * throws `UnauthorizedError` once its `auth()` orchestrator has called
+ * `provider.redirectToAuthorization(url)` (our provider has, by that point,
+ * either already thrown the `rax mcp login` error — non-interactive — or
+ * already started the loopback listener and opened the browser / called
+ * `onAuthorizationUrl` — interactive). For the interactive case: await the
+ * authorization code the listener collects, call `transport.finishAuth(code)`
+ * to exchange it for tokens, then reconnect with a FRESH transport + client —
+ * the SDK's own `finishAuth` doc comment says this enables "the next
+ * connection attempt" to succeed; the original transport's auth-loop guard
+ * (`_hasCompletedAuthFlow`) and any half-open stream state are not meant to
+ * be reused post-exchange. The same `authProvider` instance carries over,
+ * so the freshly persisted tokens are picked up immediately.
+ *
+ * `attempt()` covers BOTH `sdkClient.connect(transport)` AND the subsequent
+ * `listTools()` call inside `buildMCPServer` — not just the initial
+ * handshake. Found live against Google's Home MCP server (2026-09-17):
+ * Google's `initialize` succeeds with no token at all (its `POST /mcp`
+ * returns 200 unauthenticated), and only `tools/list` returns a 401 — a
+ * real-world server that gates a LATER request, not the first one. The MCP
+ * spec never requires the first request to be the one that's challenged, so
+ * treating only `sdkClient.connect()`'s own 401 as retryable silently
+ * dropped every server shaped like this straight to a raw "Unauthorized"
+ * with no interactive-login attempt at all.
+ */
+async function connectHttpLike(
+  config: ConnectConfig,
+  effectiveTransport: MCPServer["transport"],
+): Promise<ActiveConnection> {
+  const authProvider = config.auth
+    ? createAuthProvider(toMCPServerLike(config), config.tokenStore ?? getDefaultTokenStore())
+    : undefined;
+
+  let transport = createTransport(config, undefined, authProvider);
+  let sdkClient = new Client({ name: "reactive-agents", version: "1.0.0" }, { capabilities: {} });
+
+  const attempt = async (): Promise<MCPServer> => {
+    await sdkClient.connect(transport);
+    return buildMCPServer(config.name, effectiveTransport, config.endpoint, config, sdkClient);
+  };
+
+  let server: MCPServer;
+  try {
+    try {
+      server = await attempt();
+    } catch (err) {
+      if (
+        !(err instanceof UnauthorizedError) ||
+        !isInteractiveAuthorizationCode(config) ||
+        authProvider === undefined ||
+        !hasAuthorizationCodeHandle(authProvider)
+      ) {
+        throw err;
+      }
+
+      mcpDebug(`[MCP oauth] "${config.name}" — waiting for interactive login to complete…`);
+      const code = await authProvider.waitForAuthorizationCode();
+
+      const authTransport = transport as StreamableHTTPClientTransport | SSEClientTransport;
+      await authTransport.finishAuth(code);
+      try {
+        await transport.close();
+      } catch {
+        /* already gone */
+      }
+
+      transport = createTransport(config, undefined, authProvider);
+      sdkClient = new Client({ name: "reactive-agents", version: "1.0.0" }, { capabilities: {} });
+      server = await attempt();
+      mcpDebug(`[MCP oauth] "${config.name}" — interactive login complete`);
+    }
+  } catch (err) {
+    // Any failure past this point (including a non-retryable error from the
+    // FIRST `attempt()` above, and a retry that itself fails) must not leave
+    // an orphaned, listening loopback socket + live timeout — see
+    // `disposeAuthorizationListener`'s doc comment for why this is needed
+    // even though the happy path and the timeout path both self-close.
+    if (authProvider !== undefined && hasAuthorizationCodeHandle(authProvider)) {
+      await authProvider.disposeAuthorizationListener().catch(() => {
+        /* best-effort cleanup; the original error wins */
+      });
+    }
+    // Sanitize in place (rather than constructing a new Error) so any
+    // `instanceof` check a caller might still run against `err` (there are
+    // none left at this point in this file, but this is the last point that
+    // still has `authProvider` in scope) keeps working — only `.message`
+    // changes, which is all `connect`'s `Effect.tryPromise` catch reads.
+    if (err instanceof Error) {
+      err.message = sanitizeErrorMessage(err.message, authProvider);
+    }
+    throw err;
+  }
+
   mcpDebug(`[MCP init] "${config.name}" — connected via ${effectiveTransport}`);
-  const server = await buildMCPServer(config.name, effectiveTransport, config.endpoint, config, sdkClient);
-  return { client: sdkClient, transport, server };
+  return { client: sdkClient, transport, server, authProvider };
 }
 
 // ─── MCP Client (Effect-TS facade) ───────────────────────────────────────────
@@ -762,10 +1063,15 @@ export const makeMCPClient = Effect.gen(function* () {
         }
         return result;
       },
-      catch: (e) =>
-        e instanceof MCPConnectionError
-          ? e
-          : new ToolExecutionError({ message: e instanceof Error ? e.message : String(e), toolName, input: args }),
+      catch: (e) => {
+        if (e instanceof MCPConnectionError) return e;
+        const rawMessage = e instanceof Error ? e.message : String(e);
+        return new ToolExecutionError({
+          message: sanitizeErrorMessage(rawMessage, conn.authProvider),
+          toolName,
+          input: args,
+        });
+      },
     });
   };
 
@@ -783,7 +1089,11 @@ export const makeMCPClient = Effect.gen(function* () {
         }
       },
       catch: (e) =>
-        new MCPConnectionError({ message: e instanceof Error ? e.message : String(e), serverName, transport: "unknown" }),
+        new MCPConnectionError({
+          message: sanitizeErrorMessage(e instanceof Error ? e.message : String(e), undefined),
+          serverName,
+          transport: "unknown",
+        }),
     }).pipe(
       Effect.tap(() =>
         Ref.update(serversRef, (m) => {

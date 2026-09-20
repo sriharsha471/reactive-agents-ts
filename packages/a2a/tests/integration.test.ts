@@ -31,8 +31,13 @@ describe("A2A Integration", () => {
         const body = await req.json() as any;
         if (body.method === "message/send") {
           const taskId = crypto.randomUUID();
-          tasks.set(taskId, { id: taskId, status: { state: "completed" }, result: "Hello back!" });
-          return Response.json({ jsonrpc: "2.0", result: { taskId }, id: body.id });
+          const task = {
+            id: taskId,
+            status: { state: "completed", timestamp: new Date().toISOString() },
+            artifacts: [{ artifactId: crypto.randomUUID(), name: "response", parts: [{ kind: "text", text: "Hello back!" }] }],
+          };
+          tasks.set(taskId, task);
+          return Response.json({ jsonrpc: "2.0", result: task, id: body.id });
         }
         if (body.method === "tasks/get") {
           const task = tasks.get(body.params?.id);
@@ -45,7 +50,7 @@ describe("A2A Integration", () => {
 
     const layer = createA2AClient({ baseUrl: `http://localhost:${server.port}` });
 
-    // Send message
+    // Send message — spec shape: a Task object with `id`, not `{ taskId }`.
     const sendResult = await Effect.gen(function* () {
       const client = yield* A2AClient;
       return yield* client.sendMessage({
@@ -53,16 +58,16 @@ describe("A2A Integration", () => {
       });
     }).pipe(Effect.provide(layer), Effect.runPromise);
 
-    expect(sendResult.taskId).toBeDefined();
+    expect(sendResult.id).toBeDefined();
 
     // Get task result
     const task = await Effect.gen(function* () {
       const client = yield* A2AClient;
-      return yield* client.getTask({ id: sendResult.taskId });
+      return yield* client.getTask({ id: sendResult.id });
     }).pipe(Effect.provide(layer), Effect.runPromise);
 
     expect((task as any).status.state).toBe("completed");
-    expect((task as any).result).toBe("Hello back!");
+    expect(JSON.stringify((task as any).artifacts)).toContain("Hello back!");
   });
 
   it("should discover an agent via .well-known/agent.json", async () => {
@@ -170,8 +175,13 @@ describe("A2A Integration", () => {
           const taskId = crypto.randomUUID();
           const text = body.params?.message?.parts?.find((p: any) => p.kind === "text")?.text ?? "";
           // Simulate async completion
-          taskStore.set(taskId, { id: taskId, status: { state: "completed" }, result: `Echo: ${text}` });
-          return Response.json({ jsonrpc: "2.0", result: { taskId }, id: body.id });
+          const task = {
+            id: taskId,
+            status: { state: "completed", timestamp: new Date().toISOString() },
+            artifacts: [{ artifactId: crypto.randomUUID(), name: "response", parts: [{ kind: "text", text: `Echo: ${text}` }] }],
+          };
+          taskStore.set(taskId, task);
+          return Response.json({ jsonrpc: "2.0", result: task, id: body.id });
         }
 
         if (body.method === "tasks/get") {
@@ -206,16 +216,16 @@ describe("A2A Integration", () => {
       });
     }).pipe(Effect.provide(layer), Effect.runPromise);
 
-    expect(sendResult.taskId).toBeDefined();
+    expect(sendResult.id).toBeDefined();
 
     // 3. Get result
     const task = await Effect.gen(function* () {
       const client = yield* A2AClient;
-      return yield* client.getTask({ id: sendResult.taskId });
+      return yield* client.getTask({ id: sendResult.id });
     }).pipe(Effect.provide(layer), Effect.runPromise);
 
     expect((task as any).status.state).toBe("completed");
-    expect((task as any).result).toBe("Echo: Hello world");
+    expect(JSON.stringify((task as any).artifacts)).toContain("Echo: Hello world");
   });
 
   it("should cancel an in-progress task", async () => {
@@ -227,8 +237,9 @@ describe("A2A Integration", () => {
 
         if (body.method === "message/send") {
           const taskId = crypto.randomUUID();
-          taskStore.set(taskId, { id: taskId, status: { state: "working" } });
-          return Response.json({ jsonrpc: "2.0", result: { taskId }, id: body.id });
+          const task = { id: taskId, status: { state: "working", timestamp: new Date().toISOString() } };
+          taskStore.set(taskId, task);
+          return Response.json({ jsonrpc: "2.0", result: task, id: body.id });
         }
 
         if (body.method === "tasks/cancel") {
@@ -256,7 +267,7 @@ describe("A2A Integration", () => {
     // Cancel
     const canceled = await Effect.gen(function* () {
       const client = yield* A2AClient;
-      return yield* client.cancelTask({ id: sendResult.taskId });
+      return yield* client.cancelTask({ id: sendResult.id });
     }).pipe(Effect.provide(layer), Effect.runPromise);
 
     expect((canceled as any).status.state).toBe("canceled");

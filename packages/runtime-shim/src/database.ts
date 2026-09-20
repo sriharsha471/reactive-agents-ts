@@ -2,7 +2,10 @@ import { createRequire } from "node:module";
 import { isBun } from "./detect.js";
 import type { DatabaseConstructor, DatabaseLike, StatementLike } from "./types.js";
 
-const require = createRequire(import.meta.url);
+let _require: NodeJS.Require | undefined;
+function nodeRequire(): NodeJS.Require {
+  return (_require ??= createRequire(import.meta.url));
+}
 
 // Node-sqlite shape (minimal subset we use)
 interface NodeSqliteDatabase {
@@ -96,8 +99,12 @@ function createStubDatabase(): DatabaseConstructor {
 
 function loadDatabase(): DatabaseConstructor {
   if (isBun) {
-    const { Database: BunDatabase } = require("bun:sqlite") as typeof import("bun:sqlite");
-    return BunDatabase as unknown as DatabaseConstructor;
+    try {
+      const { Database: BunDatabase } = nodeRequire()("bun:sqlite") as typeof import("bun:sqlite");
+      return BunDatabase as unknown as DatabaseConstructor;
+    } catch {
+      return createStubDatabase();
+    }
   }
   try {
     // Node 22.5+ has node:sqlite. require() succeeding is NOT enough:
@@ -105,7 +112,7 @@ function loadDatabase(): DatabaseConstructor {
     // non-functional DatabaseSync (no working .exec) — that surfaced as
     // "this.db.exec is not a function" at runtime. Probe an in-memory
     // instance and fall back to the no-op stub if it isn't usable.
-    const mod = require("node:sqlite") as {
+    const mod = nodeRequire()("node:sqlite") as {
       DatabaseSync: new (path: string, opts?: unknown) => NodeSqliteDatabase;
     };
     const probe = new mod.DatabaseSync(":memory:");

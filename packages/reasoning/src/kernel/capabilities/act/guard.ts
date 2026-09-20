@@ -117,19 +117,41 @@ function commandTargetValue(key: string, value: string): string {
   return value.trim().split(/\s+/).slice(0, 2).join(" ");
 }
 
+/**
+ * `file-edit`'s canonical use case is SEVERAL edits to the SAME file — its
+ * target key (`path`) is deliberately identical across calls, so the generic
+ * single-key signature below would treat every edit past the 2nd as
+ * repetition and nudge the model toward `file-write` (a full overwrite),
+ * exactly what the tool exists to avoid. Two edits to different regions of
+ * the same file are genuinely different units of work, so `file-edit`'s
+ * target signature is `path + oldText` combined — same file, different
+ * region, counts as distinct; same file, same region (a genuine unproductive
+ * repeat) still collapses to one signature and is still blocked.
+ */
+function targetSignature(toolName: string, args: Record<string, unknown> | undefined): string | undefined {
+  if (toolName === "file-edit") {
+    const path = args?.path;
+    const oldText = args?.oldText;
+    if (typeof path !== "string" || typeof oldText !== "string") return undefined;
+    return `${path} ${oldText}`;
+  }
+  const targetKey = TARGET_ARG_KEYS.find((k) => typeof args?.[k] === "string");
+  if (!targetKey) return undefined;
+  return commandTargetValue(targetKey, args![targetKey] as string);
+}
+
 function hasDistinctTarget(tc: ToolCallSpec, state: KernelState): boolean {
   const args = tc.arguments as Record<string, unknown> | undefined;
-  const targetKey = TARGET_ARG_KEYS.find((k) => typeof args?.[k] === "string");
-  if (!targetKey) return false;
-  const targetValue = commandTargetValue(targetKey, args![targetKey] as string);
+  const targetValue = targetSignature(tc.name, args);
+  if (targetValue === undefined) return false;
   for (const step of state.steps) {
     if (step.type !== "action") continue;
     const stepTc = step.metadata?.toolCall as
       | { name?: string; arguments?: Record<string, unknown> }
       | undefined;
     if (stepTc?.name !== tc.name) continue;
-    const stepValue = stepTc.arguments?.[targetKey];
-    if (typeof stepValue === "string" && commandTargetValue(targetKey, stepValue) === targetValue) {
+    const stepValue = targetSignature(tc.name, stepTc.arguments);
+    if (stepValue !== undefined && stepValue === targetValue) {
       return false;
     }
   }

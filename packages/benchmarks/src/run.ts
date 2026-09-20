@@ -251,7 +251,11 @@ async function main() {
     if (args.judgeUrl) session = { ...session, judgeUrl: args.judgeUrl } as typeof session
     // Filter the session's models to a subset (by id or model string), keeping
     // each model's declared contextTier — e.g. run frontier tiers now and add
-    // the local tier later (results accumulate via the merge-by-cell writer).
+    // the local tier later. NOTE: runner.ts's output-file writer does a
+    // shallow `{...existing, ...sessionReport}` merge, which overwrites
+    // (not merges) `taskReports` across invocations — splitting a session
+    // across multiple --models runs against the same --output will clobber
+    // earlier cells, not accumulate them.
     if (args.modelIds?.length) {
       const want = args.modelIds
       const models = session.models.filter(m => want.includes(m.id) || want.includes(m.model))

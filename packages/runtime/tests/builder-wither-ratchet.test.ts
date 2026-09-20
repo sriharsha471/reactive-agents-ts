@@ -19,6 +19,17 @@ import { ReactiveAgents } from "../src/index.js";
 // P0-6/P0-10): withIdentity / withInteraction / withOrchestration
 // (provide-and-forget layers nothing resolved) and withProgressCheckpoint
 // (unimplemented promise) removed.
+//
+// 2026-09-19: MCP toolkit scaffolding (`wiki/Architecture/Design-Specs/
+// 2026-09-19-mcp-toolkit-scaffolding.md`) briefly shipped as a separate
+// `.withMcpToolkit()` method (raised CEILING to 86), then a fold-in attempt
+// via structural guessing on `.withMCP()`'s existing object parameter was
+// tried and rejected (ambiguous — see the design spec's "Amendment"
+// section). Final resolution: `.withMCP()` gained overloads discriminated by
+// JS *type*, not shape — `string`/`string[]` means "resolve via registry",
+// any object/object[] means "connect this literal config," exactly as
+// before. No new top-level method; `.withMcpToolkit()` removed. CEILING back
+// at 85.
 const WITHER_CEILING = 85;
 
 function witherNames(): string[] {

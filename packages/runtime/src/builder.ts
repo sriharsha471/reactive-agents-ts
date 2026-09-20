@@ -5,6 +5,12 @@ import { homedir } from 'node:os'
 // createLightRuntime is no longer used directly from builder.ts.
 import { durableConfigHash } from './services/run-store.js'
 import type { MCPServerConfig } from './runtime.js'
+// MCP toolkit scaffolding (2026-09-19) — type-only import, matching the
+// existing ResultCompressionConfig/RemoteAgentClient style below; the
+// runtime value (`defaultRegistries`) is dynamically imported inside
+// `build()` alongside this file's other `@reactive-agents/tools` runtime
+// access (see tool-mcp-registrations.ts for the established pattern).
+import type { MCPToolkitRequest, MCPVolumeMount } from '@reactive-agents/tools'
 import {
     defaultTracingConfig,
     deriveGoalAchieved,
@@ -392,6 +398,13 @@ export class ReactiveAgentBuilder<TOut = unknown> {
     // Resolved lazily in defaultTracingConfig() so env changes apply per build.
     private _tracingConfig: { dir: string } | null = defaultTracingConfig()
     private _mcpServers: MCPServerConfig[] = []
+    // MCP toolkit scaffolding (2026-09-19) — `.withMCP(catalogName, options?)`
+    // requests, stored synchronously here (mirroring `_mcpServers`'s own
+    // sync-storage pattern) and resolved via the id-keyed `defaultRegistries`
+    // lookup (`MCPToolkitRequest.registry`, defaults to `"docker-hub"`)
+    // inside `.build()`, then merged into `_mcpServers` before the runtime
+    // layer reads it.
+    private _mcpToolkitRequests: MCPToolkitRequest[] = []
     private _systemPrompt?: string
     private _environmentContext?: Record<string, string>
     private _a2aOptions?: A2AOptions
@@ -1897,9 +1910,93 @@ export class ReactiveAgentBuilder<TOut = unknown> {
      *   })
      *   .build()
      * ```
+     *
+     * ---
+     *
+     * A bare `string` (or `string[]`) instead scaffolds a curated server from
+     * a public registry catalog (Docker Hub's `mcp/*` catalog by default) by
+     * name, instead of hand-writing a config. The two input shapes are
+     * unambiguous at the JS *type* level — a string can never be mistaken for
+     * an `MCPServerConfig` object — so there is no guessing involved. Design
+     * spec: `wiki/Architecture/Design-Specs/2026-09-19-mcp-toolkit-scaffolding.md`.
+     *
+     * Like the object form, this is synchronous — it only stores the
+     * request(s). Resolution (network fetch, env validation, the digest-keyed
+     * approval gate) happens inside `.build()`, and a resolved config is
+     * merged into the same server list the object form populates. A registry
+     * rejection (e.g. `MCPApprovalRequiredError`, `MCPMissingEnvVarError`)
+     * propagates out of `.build()` untransformed — catch and act on it there.
+     *
+     * A `string[]` batches multiple catalog names with no per-entry options —
+     * call `.withMCP()` once per name if you need per-entry `env`/`volumes`.
+     * A single mixed array of strings and objects in one call is not
+     * supported and throws synchronously (call `.withMCP()` separately for
+     * each input shape instead of guessing which one you meant).
+     *
+     * @param catalogName - a catalog entry name (or names) to resolve via a registry
+     * @param options.registry - registry id to resolve against (defaults to `"docker-hub"`)
+     * @param options.env - env vars the resolver validates against the catalog entry's declared requirements
+     * @param options.volumes - dynamic bind mounts (filesystem/git-style servers that need host access)
+     * @param options.requireApproval - whether the digest-keyed approval gate applies to this call.
+     * Defaults to `true` (gate on) — an unapproved image fails closed. Pass `false` as an explicit,
+     * per-call trust decision (e.g. CI, or a registry already vetted out-of-band) — never a default,
+     * and never auto-records an approval; a later call without this flag still gates normally.
+     * @example
+     * ```typescript
+     * const agent = await ReactiveAgents.create()
+     *   .withMCP("brave-search", { env: { BRAVE_API_KEY: process.env.BRAVE_API_KEY! } })
+     *   .build()
+     * ```
      */
-    withMCP(config: MCPServerConfig | MCPServerConfig[]): this {
-        applyWithMCP(this, config)
+    withMCP(catalogName: string, options?: {
+        registry?: string
+        env?: Record<string, string>
+        volumes?: MCPVolumeMount[]
+        requireApproval?: boolean
+    }): this
+    withMCP(catalogNames: string[]): this
+    withMCP(config: MCPServerConfig | MCPServerConfig[]): this
+    /**
+     * @deprecated Not supported. A single `.withMCP()` call cannot mix catalog
+     * names (`string`) with hand-written `MCPServerConfig` objects in one array —
+     * call `.withMCP()` once for the string(s) and once for the object(s); both
+     * merge into the same server list at `.build()` time. Throws synchronously
+     * if called this way.
+     */
+    withMCP(mixed: ReadonlyArray<string | MCPServerConfig>): never
+    withMCP(
+        input: MCPServerConfig | MCPServerConfig[] | string | string[] | ReadonlyArray<string | MCPServerConfig>,
+        options?: {
+            registry?: string
+            env?: Record<string, string>
+            volumes?: MCPVolumeMount[]
+            requireApproval?: boolean
+        }
+    ): this {
+        if (typeof input === 'string') {
+            this._mcpToolkitRequests.push({
+                name: input,
+                ...(options?.registry !== undefined ? { registry: options.registry } : {}),
+                ...(options?.env !== undefined ? { env: options.env } : {}),
+                ...(options?.volumes !== undefined ? { volumes: options.volumes } : {}),
+                ...(options?.requireApproval !== undefined ? { requireApproval: options.requireApproval } : {}),
+            })
+            return this
+        }
+        if (Array.isArray(input) && input.length > 0 && input.every((entry) => typeof entry === 'string')) {
+            for (const name of input as string[]) {
+                this._mcpToolkitRequests.push({ name })
+            }
+            return this
+        }
+        if (Array.isArray(input) && input.some((entry) => typeof entry === 'string')) {
+            throw new Error(
+                '.withMCP(): a single call cannot mix catalog names (string) with ' +
+                'MCPServerConfig objects in one array — call .withMCP() once for the ' +
+                'registry-resolved names (string[]) and once for the hand-written configs (object[]).'
+            )
+        }
+        applyWithMCP(this, input as MCPServerConfig | MCPServerConfig[])
         return this
     }
 
@@ -2422,6 +2519,30 @@ export class ReactiveAgentBuilder<TOut = unknown> {
                 "crash-resume checkpoints require the kernel path — add .withReasoning(). " +
                 "(The run row and approval rails still work.)",
             )
+        }
+
+        // MCP toolkit resolution (2026-09-19): resolve any pending
+        // `.withMCP(catalogName)` requests via their registry BEFORE anything
+        // else reads `_mcpServers` below (e.g. the task-contract
+        // `hasMcpServers` check just past the capability-prime block). Plain
+        // `await` here, matching this method's existing style (see the
+        // dynamic imports throughout `build()`) — NOT routed through
+        // `buildEffect()`'s Effect.gen, so a registry rejection
+        // (`MCPApprovalRequiredError`, `MCPMissingEnvVarError`, etc.)
+        // propagates out of this `await` untransformed instead of being
+        // flattened by `unwrapError()` at the
+        // `Effect.runPromise(this.buildEffect())` boundary further down.
+        if (this._mcpToolkitRequests.length > 0) {
+            const { defaultRegistries } = await import('@reactive-agents/tools')
+            const pending = this._mcpToolkitRequests
+            this._mcpToolkitRequests = []
+            const resolved = await Promise.all(
+                pending.map((request) =>
+                    defaultRegistries[request.registry ?? 'docker-hub'].resolve(request)
+                )
+            )
+            this._mcpServers.push(...(resolved as MCPServerConfig[]))
+            this._enableTools = true
         }
 
         // Eager capability prime — run the provider's live discovery probe

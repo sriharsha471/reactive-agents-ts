@@ -99,7 +99,12 @@ export const WITHER_PROOF: Readonly<Record<string, Proof>> = {
   withAdaptiveHarness: { status: "UNOBSERVABLE-DETERMINISTIC", reason: "adaptive plan compilation only observably changes tool-call trajectories over a real multi-step live-model run (see packages/benchmarks/tests/adaptive-ablation-session.test.ts); the deterministic test-provider plumbing test (withadaptiveharness-plumbing.test.ts) only proves toConfig() passthrough, not behavior" },
   withLongHorizon: { status: "UNOBSERVABLE-DETERMINISTIC", reason: "long-horizon guard scaling (vetoDecisionWindow/redirectBudget) only observably diverges from the absolute-count default over a real many-iteration live-model run (see packages/benchmarks/tests/long-horizon-arm.test.ts); withlonghorizon-plumbing.test.ts only proves toConfig() passthrough" },
   withCortex: { status: "UNOBSERVABLE-DETERMINISTIC", reason: "reports events to a live Cortex HTTP desk; with-cortex-build.test.ts only asserts build()/run() do not throw when a (non-listening) URL is configured, not that events are actually POSTed — proving that needs a real or stub HTTP listener, not attempted yet" },
-  withMCP: { status: "UNOBSERVABLE-DETERMINISTIC", reason: "registers Docker-backed MCP servers; builder-tools.test.ts only proves config storage, actual tool discovery/execution needs a live MCP server/Docker container unavailable in CI" },
+  // Registry-resolved (string) form proven end-to-end via a fake MCPRegistry
+  // in builder-mcp-registry.test.ts; the object/object[] literal-config form
+  // is still only proven at the config-storage level (builder-tools.test.ts)
+  // — actual tool discovery/execution needs a live MCP server/Docker
+  // container unavailable in CI.
+  withMCP: { status: "PROVEN", test: "builder-mcp-registry.test.ts" },
 
   // ─── SILENT-remaining (temporary rows; genuinely unproven at the wither
   //     level as of this task; grouped into follow-on batches of ~6, priority

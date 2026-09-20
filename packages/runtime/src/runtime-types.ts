@@ -111,6 +111,20 @@ export interface MCPServerConfig {
    * `@reactive-agents/tools` for tests/CI that must not touch disk.
    */
   tokenStore?: MCPTokenStore;
+  /**
+   * Risk tier this server's discovered tools should be tagged with, overriding
+   * `ToolService.connectMCPServer`'s hardcoded `"medium"` default. Primarily
+   * set by `MCPRegistry` implementations (e.g. `DockerHubMCPRegistry` sets
+   * `"high"` for toolkit-resolved servers per the design spec's "Risk-tier
+   * elevation" section) but hand-written configs can opt in too.
+   *
+   * NOTE: the `tool-service.ts` consumer that reads this field
+   * (`riskLevel: config.defaultRiskLevel ?? "medium"`) is a separate,
+   * parallel `@reactive-agents/tools` change — this field is a no-op on its
+   * own until that lands.
+   * See `wiki/Architecture/Design-Specs/2026-09-19-mcp-toolkit-scaffolding.md`.
+   */
+  defaultRiskLevel?: "low" | "medium" | "high";
 }
 
 /**

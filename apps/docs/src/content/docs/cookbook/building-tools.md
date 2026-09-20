@@ -1,15 +1,26 @@
 ---
-title: Building Custom Tools
+title: 'Advanced Custom Tools'
 description: >-
-  Create typed, validated tools with the fluent ToolBuilder API or plain
-  ToolDefinition objects.
+  The deeper-control path for custom tools — the fluent ToolBuilder API, raw
+  ToolDefinition objects, and Effect-native handlers — for when defineTool()
+  isn't enough.
 sidebar:
   order: 8
 ---
 
-Tools give agents the ability to take real-world actions — fetch data, run code, call APIs, write files. This recipe covers both the fluent `ToolBuilder` API and the lower-level `ToolDefinition` format.
+:::note[Most tools don't need this page]
+Start with [`defineTool`](/guides/tools/#registering-custom-tools) or the
+[`tool()` helper](/cookbook/agent-tool-calling-mcp/#step-1--an-agent-with-one-custom-tool) —
+plain `async`/sync handlers, no Effect knowledge required. Reach for what's
+below when you want build-time validation on the definition itself, a raw
+`ToolDefinition` for integrating with an existing registry, or an
+Effect-native handler for structured error channels / resource-safe cleanup.
+Effect was never excluded — it's just not the default path.
+:::
 
-## ToolBuilder (Recommended)
+Tools give agents the ability to take real-world actions — fetch data, run code, call APIs, write files. This recipe covers the fluent `ToolBuilder` API, the lower-level `ToolDefinition` format, and Effect-returning handlers.
+
+## ToolBuilder
 
 The fluent `ToolBuilder` builds the tool *definition* — name, description, typed parameters, risk metadata — and catches misconfiguration at build time (a missing description throws). The execution handler is supplied when you register the tool with `.withTools({ tools })`: it receives a single `args` record and returns an `Effect`.
 

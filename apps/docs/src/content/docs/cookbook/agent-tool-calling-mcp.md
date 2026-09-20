@@ -2,10 +2,11 @@
 title: Build an AI Agent with Tool Calling and MCP in TypeScript
 description: >-
   A hands-on TypeScript tutorial for building an AI agent with function calling
-  and Model Context Protocol (MCP). Define your own tools with the ToolBuilder
-  API, plug in MCP servers over stdio and streamable-http, and run the same code
-  on local and frontier models.
+  and Model Context Protocol (MCP). Define your own tools with the tool()
+  helper, plug in MCP servers over stdio and streamable-http, and run the same
+  code on local and frontier models.
 sidebar:
+  label: Tool Calling & MCP
   order: 31
 ---
 
@@ -13,7 +14,7 @@ Tools are how an AI agent stops talking and starts *acting* — searching the we
 
 In Reactive Agents there are two ways to give a TypeScript agent tools, and you can mix them freely in one agent:
 
-1. **Define your own tools** — wrap any function with the `ToolBuilder` fluent API (or a raw schema object).
+1. **Define your own tools** — wrap any function with the `tool()` helper (or a raw schema object for full control).
 2. **Plug in MCP servers** — connect any [Model Context Protocol](https://modelcontextprotocol.io/) server (filesystem, GitHub, Stripe, a database, your own) and its tools appear in the agent's registry automatically.
 
 This guide walks through both, end to end. Install first:
@@ -25,59 +26,47 @@ bun add reactive-agents
 
 ## Step 1 — An agent with one custom tool
 
-The fastest way to define a tool's schema is `ToolBuilder`. You give it a name, a description (the model reads this to decide when to call it), and typed parameters. The execution `handler` — a function that receives the validated `args` record and returns an Effect — is supplied when you register the tool via `.withTools({ tools: [...] })`.
+The fastest way to define a tool is the `tool()` helper — no Effect or Schema knowledge required. Give it a name, a description (the model reads this to decide when to call it), and a plain `async`/sync handler that receives the validated `args` record and returns a value directly:
 
 ```typescript
 import { ReactiveAgents } from "reactive-agents";
-import { ToolBuilder } from "@reactive-agents/tools";
-import { Effect } from "effect";
+import { tool } from "@reactive-agents/tools";
 
-const { definition: weatherDef } = ToolBuilder.create("get_weather")
-  .description("Get the current weather for a city")
-  .param("city", "string", "City name, e.g. 'Tokyo'", { required: true })
-  .riskLevel("low")
-  .timeout(10_000)
-  .build();
+const weatherTool = tool("get_weather", "Get the current weather for a city", {
+  params: {
+    city: { type: "string", required: true, description: "City name, e.g. 'Tokyo'" },
+  },
+  riskLevel: "low",
+  timeoutMs: 10_000,
+  handler: async (args) => {
+    const city = String(args.city);
+    const res = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1`);
+    const data = (await res.json()) as {
+      current_condition: Array<{ temp_C: string; weatherDesc: Array<{ value: string }> }>;
+    };
+    const c = data.current_condition[0];
+    return `${city}: ${c.temp_C}°C, ${c.weatherDesc[0].value}`;
+  },
+});
 
 const agent = await ReactiveAgents.create()
   .withProvider("anthropic")
   .withModel("claude-sonnet-4-6")
   .withReasoning() // enables the Think → Act → Observe (ReAct) loop
-  .withTools({
-    tools: [
-      {
-        definition: weatherDef,
-        handler: (args) =>
-          Effect.tryPromise(async () => {
-            const city = String(args.city);
-            const res = await fetch(
-              `https://wttr.in/${encodeURIComponent(city)}?format=j1`,
-            );
-            const data = (await res.json()) as {
-              current_condition: Array<{
-                temp_C: string;
-                weatherDesc: Array<{ value: string }>;
-              }>;
-            };
-            const c = data.current_condition[0];
-            return `${city}: ${c.temp_C}°C, ${c.weatherDesc[0].value}`;
-          }),
-      },
-    ],
-  })
+  .withTools({ tools: [weatherTool] })
   .build();
 
 const result = await agent.run("What should I wear in Tokyo today?");
 console.log(result.output);
 ```
 
-What happens under the hood: `.withReasoning()` turns on the ReAct loop. The model sees `get_weather` in its tool list, emits a structured `tool_use` block with `{ city: "Tokyo" }`, the framework validates the arguments against your schema, runs your handler in a sandbox, feeds the real result back as a `tool_result`, and the model writes its final answer.
+What happens under the hood: `.withReasoning()` turns on the ReAct loop. The model sees `get_weather` in its tool list, emits a structured `tool_use` block with `{ city: "Tokyo" }`, the framework validates the arguments against your schema, runs your handler in a sandbox, feeds the real result back as a `tool_result`, and the model writes its final answer. `tool()` wraps whatever your handler returns or throws into the Effect the runtime expects internally — you never see that layer.
 
-The handler returns an `Effect<string>`. Use `Effect.succeed(...)` for pure values, `Effect.try(...)` for synchronous code that can throw, and `Effect.tryPromise(...)` for async work — errors are caught and surfaced to the agent as an observation instead of crashing the run.
+For simpler tools, skip `params`/`riskLevel`/`timeoutMs` entirely: `tool("greet", "Greet a user", async (args) => \`Hello, ${args.name}!\`)`.
 
 ## Step 2 — The raw-schema tool form
 
-`ToolBuilder` is sugar over a plain `ToolDefinition` schema object. If you are generating tools dynamically or prefer explicit schemas, write the `{ definition, handler }` shape directly:
+`tool()` is sugar over a plain `ToolDefinition` schema object plus an Effect-returning handler. If you are generating tools dynamically, need fine-grained control over the `ToolDefinition` shape, or want to write the handler as an `Effect` directly (for structured error channels, resource-safe cleanup, etc.), write the `{ definition, handler }` shape yourself:
 
 ```typescript
 const agent = await ReactiveAgents.create()
@@ -156,7 +145,7 @@ const agent = await ReactiveAgents.create()
   .build();
 ```
 
-You can pass an **array** to `.withMCP([...])`, or chain `.withMCP()` multiple times, to connect several servers at once — and combine them with `ToolBuilder` custom tools in the same agent. The model sees every tool uniformly and picks whichever it needs.
+You can pass an **array** to `.withMCP([...])`, or chain `.withMCP()` multiple times, to connect several servers at once — and combine them with `tool()` custom tools in the same agent. The model sees every tool uniformly and picks whichever it needs.
 
 ### Skip the config — resolve a server by name
 
@@ -213,7 +202,7 @@ const localAgent = await ReactiveAgents.create()
   .withProvider("ollama")
   .withModel("qwen3:4b")
   .withReasoning()
-  .withTools({ tools: [weatherTool] }) // same tool, same builder
+  .withTools({ tools: [weatherTool] }) // same tool, same handler
   .build();
 
 const result = await localAgent.run("What's the weather in Tokyo?");

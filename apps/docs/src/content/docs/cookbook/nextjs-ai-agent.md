@@ -5,6 +5,7 @@ description: >-
   Handler runs the agent server-side and streams tokens to a React component
   over Server-Sent Events.
 sidebar:
+  label: Next.js Agent
   order: 32
 ---
 

@@ -4,6 +4,7 @@ description: >-
   Step-by-step tutorial to build and run a local AI agent in TypeScript with
   Ollama — no API key, full privacy, and one-line parity with frontier models.
 sidebar:
+  label: Local Agents with Ollama
   order: 30
 ---
 

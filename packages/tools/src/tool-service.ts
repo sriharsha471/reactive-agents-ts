@@ -199,6 +199,7 @@ export class ToolService extends Context.Tag("ToolService")<
         | "headers"
         | "auth"
         | "tokenStore"
+        | "defaultRiskLevel"
       >,
     ) => Effect.Effect<MCPServer, MCPConnectionError>;
 
@@ -501,6 +502,7 @@ export const ToolServiceLive = Layer.effect(
         | "headers"
         | "auth"
         | "tokenStore"
+        | "defaultRiskLevel"
       >,
     ): Effect.Effect<MCPServer, MCPConnectionError> =>
       Effect.gen(function* () {
@@ -536,7 +538,7 @@ export const ToolServiceLive = Layer.effect(
               name: `${server.name}/${toolName}`,
               description: `[${server.name}/${toolName}] ${schema?.description ?? `MCP tool from ${server.name}`}`,
               parameters,
-              riskLevel: "medium",
+              riskLevel: config.defaultRiskLevel ?? "medium",
               timeoutMs: 30_000,
               requiresApproval: false,
               source: "mcp",

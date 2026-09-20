@@ -321,6 +321,41 @@ describe("ToolService", () => {
     await Effect.runPromise(program.pipe(Effect.provide(TestToolLayer)));
   });
 
+  it("registers MCP tools with riskLevel \"medium\" when defaultRiskLevel is not set (existing default)", async () => {
+    const program = Effect.gen(function* () {
+      const tools = yield* ToolService;
+
+      yield* tools.connectMCPServer({
+        name: "test-server",
+        transport: "streamable-http",
+        endpoint: `http://localhost:${mockServer.port}/mcp`,
+      });
+
+      const def = yield* tools.getTool("test-server/test-tool");
+      expect(def.riskLevel).toBe("medium");
+    });
+
+    await Effect.runPromise(program.pipe(Effect.provide(TestToolLayer)));
+  });
+
+  it("registers MCP tools with the server's defaultRiskLevel when set", async () => {
+    const program = Effect.gen(function* () {
+      const tools = yield* ToolService;
+
+      yield* tools.connectMCPServer({
+        name: "test-server",
+        transport: "streamable-http",
+        endpoint: `http://localhost:${mockServer.port}/mcp`,
+        defaultRiskLevel: "high",
+      });
+
+      const def = yield* tools.getTool("test-server/test-tool");
+      expect(def.riskLevel).toBe("high");
+    });
+
+    await Effect.runPromise(program.pipe(Effect.provide(TestToolLayer)));
+  });
+
   it("registers an MCP tool whose schema uses JSON Schema's \"integer\" type (found live against Google Home MCP)", async () => {
     // Real MCP tool schemas can legitimately use "integer" — a distinct
     // JSON Schema type from "number" — for an integer-only parameter.

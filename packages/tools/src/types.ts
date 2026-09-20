@@ -619,6 +619,17 @@ export type MCPServer = typeof MCPServerSchema.Type & {
    * in-memory store (per-process only) when `auth` is set without one.
    */
   readonly tokenStore?: MCPTokenStore;
+  /**
+   * Risk tier applied to every tool registered from this server, overriding
+   * the `"medium"` default `ToolService.connectMCPServer` otherwise assigns.
+   * Lets a registry-sourced server (e.g. an unverified Docker Hub `mcp/*`
+   * catalog entry, see `packages/tools/src/mcp/registry/types.ts`'s
+   * `MCPRegistryServerConfig`) be tagged with a higher risk tier than
+   * hand-configured servers at the point of tool registration.
+   *
+   * @default undefined (registered tools get `riskLevel: "medium"`)
+   */
+  readonly defaultRiskLevel?: "low" | "medium" | "high";
 };
 
 /**

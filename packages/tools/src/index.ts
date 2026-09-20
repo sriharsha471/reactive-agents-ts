@@ -76,6 +76,41 @@ export {
   type HardenedProviderExtras,
 } from "./mcp/auth/hardened-provider.js";
 
+// ─── MCP Toolkit Registry (2026-09-19) ───
+// Resolves a public catalog entry name (Docker Hub's `mcp/*` first) into a
+// connect-ready MCP server config, gated by a digest-keyed local approval
+// store. See wiki/Architecture/Design-Specs/2026-09-19-mcp-toolkit-scaffolding.md.
+export {
+  MCPVolumeMountSchema,
+  MCPToolkitRequestSchema,
+  MCPMissingEnvVarError,
+  MCPApprovalRequiredError,
+  MCPDigestMismatchError,
+  MCPRegistryFetchError,
+  MCPApprovalStore,
+  MCPApprovalStoreError,
+  MCPApprovalStoreLive,
+  makeFileApprovalStore,
+  buildApprovalKey,
+  DEFAULT_MCP_APPROVALS_PATH,
+  approveMcpImage,
+  isMcpImageApproved,
+  DockerHubHttp,
+  DockerHubHttpLive,
+  DockerHubMCPRegistry,
+  resolveDockerHubToolkitRequest,
+  defaultRegistries,
+} from "./mcp/registry/index.js";
+export type {
+  MCPVolumeMount,
+  MCPToolkitRequest,
+  MCPRegistryServerConfig,
+  MCPRegistry,
+  MCPApprovalRecord,
+  DockerHubRepositoryResponse,
+  DockerHubMCPRegistryOptions,
+} from "./mcp/registry/index.js";
+
 // ─── Scratchpad spill (#47) ───
 export {
   setScratchpadBounded,

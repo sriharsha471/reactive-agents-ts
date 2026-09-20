@@ -274,6 +274,14 @@ describe("template-specific output", () => {
       expect(toml.content).toContain('compatibility_flags = ["nodejs_compat"]');
     });
 
+    test("wrangler.toml escapes special characters in the project name", () => {
+      const files = renderTemplate(baseOpts({ template: "cloudflare-worker", projectName: 'my"app\\x' }));
+      const toml = files.find((f) => f.path === "wrangler.toml")!;
+      // Quote and backslash must be escaped, or the TOML is a syntax error.
+      expect(toml.content).toContain('name = "my\\"app\\\\x"');
+      expect(toml.content).not.toContain('name = "my"app');
+    });
+
     test("ships a .dev.vars secret stub for OPENAI_API_KEY", () => {
       const files = renderTemplate(baseOpts({ template: "cloudflare-worker" }));
       const devVars = files.find((f) => f.path === ".dev.vars")!;

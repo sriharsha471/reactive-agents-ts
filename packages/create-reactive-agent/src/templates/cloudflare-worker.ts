@@ -65,7 +65,11 @@ export default {
 }
 
 function renderWrangler(opts: ScaffoldOptions): string {
-  return `name = "${opts.projectName}"
+  // TOML basic strings share JSON's escaping rules, so JSON.stringify yields a
+  // correctly quoted + escaped name (same approach shared.ts uses for
+  // package.json). Guards against quotes/backslashes/newlines in the name.
+  const name = JSON.stringify(opts.projectName);
+  return `name = ${name}
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
 

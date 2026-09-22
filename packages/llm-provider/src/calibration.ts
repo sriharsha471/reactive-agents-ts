@@ -121,15 +121,24 @@ export function loadCalibration(modelId: string): ModelCalibration | undefined {
   // When running from source, import.meta.url resolves to src/calibration.ts → src/calibrations/<key>.json.
   // When running from dist, it resolves to dist/index.js → dist/calibrations/ (populated by build) or
   // ../src/calibrations/ as a fallback (for test/dev scenarios where dist was produced without copying).
-  const moduleDir = path.dirname(new URL(import.meta.url).pathname);
-  const prebakedPath = path.join(moduleDir, "calibrations", `${key}.json`);
-  const distFallbackPath = path.join(moduleDir, "..", "src", "calibrations", `${key}.json`);
+  // import.meta.url is undefined on some bundled edge runtimes (e.g. workerd),
+  // so this must not throw — fall through to just the user cache path there.
+  const prebakedCandidates: string[] = [];
+  try {
+    const moduleDir = path.dirname(new URL(import.meta.url).pathname);
+    prebakedCandidates.push(
+      path.join(moduleDir, "calibrations", `${key}.json`),
+      path.join(moduleDir, "..", "src", "calibrations", `${key}.json`),
+    );
+  } catch {
+    // no resolvable module URL — skip pre-baked lookup
+  }
 
   // Try user cache
   const userHome = process.env.HOME ?? "~";
   const userPath = path.join(userHome, ".reactive-agents", "calibrations", `${key}.json`);
 
-  for (const candidatePath of [prebakedPath, distFallbackPath, userPath]) {
+  for (const candidatePath of [...prebakedCandidates, userPath]) {
     try {
       if (!fs.existsSync(candidatePath)) continue;
       const data = JSON.parse(fs.readFileSync(candidatePath, "utf-8"));

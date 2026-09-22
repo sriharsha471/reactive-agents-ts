@@ -132,7 +132,7 @@ export {
   DEFAULT_DOCKER_CONFIG,
   RUNNER_IMAGES,
   SANDBOX_IMAGES,
-  SECCOMP_PROFILE_PATH,
+  getSeccompProfilePath,
 } from "./execution/docker-sandbox.js";
 export type {
   DockerSandboxConfig,

@@ -94,12 +94,13 @@ export type RunnerLanguage = keyof typeof RUNNER_IMAGES;
 
 // ─── Seccomp profile path ───
 
-/** Absolute path to the seccomp profile (co-located with Dockerfiles). */
-export const SECCOMP_PROFILE_PATH = join(
-  dirname(new URL(import.meta.url).pathname),
-  "sandbox-image",
-  "seccomp-sandbox.json",
-);
+/**
+ * Absolute path to the seccomp profile (co-located with Dockerfiles).
+ * Lazy — `import.meta.url` is unavailable on some bundled edge runtimes
+ * (e.g. workerd), so this must not run at module import time.
+ */
+export const getSeccompProfilePath = (): string =>
+  join(dirname(new URL(import.meta.url).pathname), "sandbox-image", "seccomp-sandbox.json");
 
 // ─── Docker Availability & Image Checks ───
 
@@ -312,7 +313,7 @@ export const makeDockerSandbox = (
 
       const containerName = `rax-sandbox-${randomUUID().slice(0, 12)}`;
       const seccompPath =
-        config.useSeccomp && existsSync(SECCOMP_PROFILE_PATH) ? SECCOMP_PROFILE_PATH : null;
+        config.useSeccomp && existsSync(getSeccompProfilePath()) ? getSeccompProfilePath() : null;
 
       const dockerArgs = [
         "docker",

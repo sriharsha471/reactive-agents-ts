@@ -8,7 +8,7 @@ import {
   DEFAULT_DOCKER_CONFIG,
   RUNNER_IMAGES,
   SANDBOX_IMAGES,
-  SECCOMP_PROFILE_PATH,
+  getSeccompProfilePath,
 } from "../src/execution/docker-sandbox.js";
 import type {
   DockerSandboxConfig,
@@ -45,7 +45,7 @@ describe("DockerSandbox hardened — configuration", () => {
   }, 15000);
 
   it("seccomp profile file exists at expected path", () => {
-    expect(existsSync(SECCOMP_PROFILE_PATH)).toBe(true);
+    expect(existsSync(getSeccompProfilePath())).toBe(true);
   }, 15000);
 
   it("config override merges with defaults", () => {
@@ -72,7 +72,7 @@ describe("DockerSandbox hardened — configuration", () => {
 
 describe("DockerSandbox hardened — seccomp profile", () => {
   it("seccomp profile is valid JSON", () => {
-    const content = require("fs").readFileSync(SECCOMP_PROFILE_PATH, "utf-8");
+    const content = require("fs").readFileSync(getSeccompProfilePath(), "utf-8");
     const profile = JSON.parse(content);
     expect(profile.defaultAction).toBe("SCMP_ACT_ERRNO");
     expect(profile.syscalls).toBeArray();
@@ -80,7 +80,7 @@ describe("DockerSandbox hardened — seccomp profile", () => {
   }, 15000);
 
   it("seccomp profile allows basic I/O syscalls", () => {
-    const content = require("fs").readFileSync(SECCOMP_PROFILE_PATH, "utf-8");
+    const content = require("fs").readFileSync(getSeccompProfilePath(), "utf-8");
     const profile = JSON.parse(content);
     const allowedSyscalls = profile.syscalls
       .filter((s: { action: string }) => s.action === "SCMP_ACT_ALLOW")
@@ -95,7 +95,7 @@ describe("DockerSandbox hardened — seccomp profile", () => {
   }, 15000);
 
   it("seccomp profile blocks dangerous syscalls", () => {
-    const content = require("fs").readFileSync(SECCOMP_PROFILE_PATH, "utf-8");
+    const content = require("fs").readFileSync(getSeccompProfilePath(), "utf-8");
     const profile = JSON.parse(content);
     const blockedSyscalls = profile.syscalls
       .filter((s: { action: string }) => s.action === "SCMP_ACT_ERRNO")
@@ -110,7 +110,7 @@ describe("DockerSandbox hardened — seccomp profile", () => {
   }, 15000);
 
   it("seccomp profile blocks networking syscalls", () => {
-    const content = require("fs").readFileSync(SECCOMP_PROFILE_PATH, "utf-8");
+    const content = require("fs").readFileSync(getSeccompProfilePath(), "utf-8");
     const profile = JSON.parse(content);
     const netBlocked = profile.syscalls
       .filter(
@@ -127,7 +127,7 @@ describe("DockerSandbox hardened — seccomp profile", () => {
   }, 15000);
 
   it("seccomp profile supports both x86_64 and aarch64", () => {
-    const content = require("fs").readFileSync(SECCOMP_PROFILE_PATH, "utf-8");
+    const content = require("fs").readFileSync(getSeccompProfilePath(), "utf-8");
     const profile = JSON.parse(content);
     const archs = profile.archMap.map(
       (a: { architecture: string }) => a.architecture,
@@ -162,7 +162,7 @@ describe("DockerSandbox hardened — availability", () => {
 
 describe("DockerSandbox hardened — Dockerfiles", () => {
   it("Dockerfile.bun exists and contains security hardening", () => {
-    const path = SECCOMP_PROFILE_PATH.replace(
+    const path = getSeccompProfilePath().replace(
       "seccomp-sandbox.json",
       "Dockerfile.bun",
     );
@@ -182,7 +182,7 @@ describe("DockerSandbox hardened — Dockerfiles", () => {
   }, 15000);
 
   it("Dockerfile.node exists and contains security hardening", () => {
-    const path = SECCOMP_PROFILE_PATH.replace(
+    const path = getSeccompProfilePath().replace(
       "seccomp-sandbox.json",
       "Dockerfile.node",
     );
@@ -194,7 +194,7 @@ describe("DockerSandbox hardened — Dockerfiles", () => {
   }, 15000);
 
   it("Dockerfile.python exists and contains security hardening", () => {
-    const path = SECCOMP_PROFILE_PATH.replace(
+    const path = getSeccompProfilePath().replace(
       "seccomp-sandbox.json",
       "Dockerfile.python",
     );

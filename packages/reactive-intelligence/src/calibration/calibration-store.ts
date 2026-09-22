@@ -20,7 +20,11 @@ export class CalibrationStore {
   constructor(dbPath: string = DEFAULT_DB_PATH) {
     const resolved = expandPath(dbPath);
     if (resolved !== ":memory:") {
-      mkdirSync(dirname(resolved), { recursive: true });
+      try {
+        mkdirSync(dirname(resolved), { recursive: true });
+      } catch {
+        /* best effort — filesystem-less runtimes (e.g. edge workers) fall through to Database's own error */
+      }
     }
     this.db = new Database(resolved, { create: true });
     this.db.exec("PRAGMA journal_mode=WAL");
